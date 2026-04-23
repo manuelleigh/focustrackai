@@ -21,6 +21,7 @@ LEFT_IRIS = [468, 469, 470, 471, 472]
 RIGHT_IRIS = [473, 474, 475, 476, 477]
 FACE_BBOX_REFERENCE = [10, 152, 234, 454]
 
+
 class AttentionAnalyzer:
     def __init__(self, thresholds: DetectionThresholds, enable_dlib: bool = False, dlib_shape_predictor: Path | None = None):
         self.thresholds = thresholds
@@ -65,4 +66,51 @@ class AttentionAnalyzer:
                 backend=backend,
             )
             return metrics, debug
+        
+        face_landmarks = result.multi_face_landmarks[0]
+        debug["face_landmarks"] = face_landmarks
+        face_bbox = self._face_bbox(face_landmarks.landmark, frame.shape[1], frame.shape[0])
+        debug["face_bbox"] = face_bbox
+
+        left_eye_points = self._pixels(face_landmarks.landmark, LEFT_EYE, frame.shape[1], frame.shape[0])
+        right_eye_points = self._pixels(face_landmarks.landmark, RIGHT_EYE, frame.shape[1], frame.shape[0])
+        left_ear = self._eye_aspect_ratio(left_eye_points)
+        right_ear = self._eye_aspect_ratio(right_eye_points)
+        avg_ear = float(np.mean([left_ear, right_ear]))
+
+        eyes_closed = avg_ear < self.thresholds.ear_closed
+        if eyes_closed:
+            self.closed_eye_frames += 1
+            if not self.previous_eyes_closed:
+                self.blink_count += 1
+        else:
+            self.closed_eye_frames = 0
+        self.previous_eyes_closed = eyes_closed
+
+        gaze_ratio = self._gaze_ratio(face_landmarks.landmark)
+        gaze_direction = self._gaze_direction(gaze_ratio)
+        fatigue_score = min(1.0, self.closed_eye_frames / max(1, self.thresholds.fatigue_frame_window))
+
+        if eyes_closed and fatigue_score >= 0.75:
+            attention_state = "somnoliento"
+        elif gaze_direction == "centro":
+            attention_state = "atento"
+        else:
+            attention_state = "desviado"
+
+        metrics = AttentionMetrics(
+            face_detected=True,
+            eyes_detected=True,
+            eyes_closed=eyes_closed,
+            attention_state=attention_state,
+            gaze_direction=gaze_direction,
+            left_ear=left_ear,
+            right_ear=right_ear,
+            avg_ear=avg_ear,
+            gaze_ratio=gaze_ratio,
+            fatigue_score=fatigue_score,
+            blink_count=self.blink_count,
+            backend=backend,
+        )
+        return metrics, debug
         
