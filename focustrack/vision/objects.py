@@ -10,3 +10,7 @@ try:
     from ultralytics import YOLO
 except ImportError:
     YOLO = None
+class ObjectAnalyzer:
+    def __init__(self, thresholds: DetectionThresholds, models: OptionalModels):
+        self.thresholds = thresholds
+        self.models = models    
