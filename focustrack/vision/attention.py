@@ -113,4 +113,71 @@ class AttentionAnalyzer:
             backend=backend,
         )
         return metrics, debug
+
+    def close(self) -> None:
+        self.face_mesh.close()
+
+    def _dlib_face_detected(self, frame: np.ndarray) -> bool:
+        if self.dlib_detector is None:
+            return False
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = self.dlib_detector(gray, 0)
+        return bool(faces)
+
+    def _face_bbox(self, landmarks, frame_width: int, frame_height: int) -> tuple[int, int, int, int]:
+        xs = []
+        ys = []
+        for index in FACE_BBOX_REFERENCE:
+            landmark = landmarks[index]
+            xs.append(int(landmark.x * frame_width))
+            ys.append(int(landmark.y * frame_height))
+
+        x1 = max(0, min(xs))
+        y1 = max(0, min(ys))
+        x2 = min(frame_width - 1, max(xs))
+        y2 = min(frame_height - 1, max(ys))
+        return x1, y1, x2, y2
+
+    def _pixels(self, landmarks, indexes: list[int], frame_width: int, frame_height: int) -> np.ndarray:
+        return np.array(
+            [
+                (
+                    int(landmarks[index].x * frame_width),
+                    int(landmarks[index].y * frame_height),
+                )
+                for index in indexes
+            ],
+            dtype=np.float32,
+        )
+
+    def _eye_aspect_ratio(self, points: np.ndarray) -> float:
+        vertical_1 = np.linalg.norm(points[1] - points[5])
+        vertical_2 = np.linalg.norm(points[2] - points[4])
+        horizontal = np.linalg.norm(points[0] - points[3])
+        return float((vertical_1 + vertical_2) / (2.0 * horizontal + 1e-6))
+
+    def _gaze_ratio(self, landmarks) -> float:
+        left_ratio = self._single_eye_gaze_ratio(landmarks, LEFT_IRIS, LEFT_EYE[0], LEFT_EYE[3])
+        right_ratio = self._single_eye_gaze_ratio(landmarks, RIGHT_IRIS, RIGHT_EYE[0], RIGHT_EYE[3])
+        return float(np.mean([left_ratio, right_ratio]))
+
+    def _single_eye_gaze_ratio(self, landmarks, iris_indices: list[int], eye_left_index: int, eye_right_index: int) -> float:
+        iris_points = np.array([[landmarks[index].x, landmarks[index].y] for index in iris_indices], dtype=np.float32)
+        iris_center = iris_points.mean(axis=0)
+        eye_left = landmarks[eye_left_index]
+        eye_right = landmarks[eye_right_index]
+        min_x = min(eye_left.x, eye_right.x)
+        max_x = max(eye_left.x, eye_right.x)
+        return float((iris_center[0] - min_x) / (max_x - min_x + 1e-6))
+
+    def _gaze_direction(self, gaze_ratio: float) -> str:
+        if self.thresholds.gaze_center_min <= gaze_ratio <= self.thresholds.gaze_center_max:
+            return "centro"
+        if gaze_ratio < self.thresholds.gaze_center_min:
+            return "izquierda"
+        return "derecha"
+
+
+    
         
