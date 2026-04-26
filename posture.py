@@ -23,3 +23,10 @@ class PostureAnalyzer:
 
         if not result.pose_landmarks:
             return PostureMetrics(posture_state="sin_datos", posture_score=50.0), debug
+        debug["pose_landmarks"] = result.pose_landmarks
+        landmarks = result.pose_landmarks.landmark
+        nose = landmarks[mp.solutions.pose.PoseLandmark.NOSE.value]
+        left_shoulder = landmarks[mp.solutions.pose.PoseLandmark.LEFT_SHOULDER.value]
+        right_shoulder = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_SHOULDER.value]
+        left_hip = landmarks[mp.solutions.pose.PoseLandmark.LEFT_HIP.value]
+        right_hip = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_HIP.value]
