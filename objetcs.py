@@ -31,3 +31,9 @@ class ObjectAnalyzer:
                 self.yolo_model = YOLO(models.yolo_weights)
             except Exception:
                 self.yolo_model = None
+    def analyze(
+        self,
+        frame,
+        face_bbox: tuple[int, int, int, int] | None = None,
+        frame_number: int = 0,
+    ) -> tuple[ObjectMetrics, dict[str, object]]:
