@@ -55,3 +55,14 @@ class ScreenActivityMonitor:
             return "neutral", 60.0
 
         return "sin_datos", 50.0
+
+     def _capture_screenshot(self) -> str | None:
+        try:
+            import pyautogui
+
+            filename = f"screenshot_{datetime.now():%Y%m%d_%H%M%S}.png"
+            destination = self.screenshot_dir / filename
+            pyautogui.screenshot(str(destination))
+            return str(destination)
+        except Exception:
+            return None
