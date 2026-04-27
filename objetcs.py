@@ -99,3 +99,20 @@ class ObjectAnalyzer:
                     return True
         return False
         
+def _run_yolo(self, frame) -> list[tuple[tuple[int, int, int, int], str, float]]:
+        if self.yolo_model is None:
+            return []
+
+        try:
+            result = self.yolo_model.predict(frame, conf=0.35, verbose=False)[0]
+        except Exception:
+            return self.last_boxes
+
+        boxes: list[tuple[tuple[int, int, int, int], str, float]] = []
+        for box in result.boxes:
+            cls_id = int(box.cls[0].item())
+            confidence = float(box.conf[0].item())
+            label = result.names.get(cls_id, str(cls_id))
+            x1, y1, x2, y2 = [int(value) for value in box.xyxy[0].tolist()]
+            boxes.append(((x1, y1, x2, y2), label, confidence))
+        return boxes
