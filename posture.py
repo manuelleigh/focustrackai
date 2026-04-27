@@ -44,3 +44,21 @@ class PostureAnalyzer:
         head_penalty = (head_offset / max(self.thresholds.head_offset_max, 1e-6)) * 25.0
         score = max(0.0, 100.0 - tilt_penalty - lean_penalty - head_penalty)
 
+        if score >= 75.0:
+            posture_state = "correcta"
+        elif score >= 50.0:
+            posture_state = "mejorable"
+        else:
+            posture_state = "encorvada"
+
+        metrics = PostureMetrics(
+            posture_state=posture_state,
+            posture_score=score,
+            shoulder_tilt=shoulder_tilt,
+            torso_lean=torso_lean,
+            head_offset=head_offset,
+        )
+        return metrics, debug
+
+    def close(self) -> None:
+        self.pose.close()
