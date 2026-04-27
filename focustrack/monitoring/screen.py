@@ -56,7 +56,7 @@ class ScreenActivityMonitor:
 
         return "sin_datos", 50.0
 
-     def _capture_screenshot(self) -> str | None:
+    def _capture_screenshot(self) -> str | None:
         try:
             import pyautogui
 
