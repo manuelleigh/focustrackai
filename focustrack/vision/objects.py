@@ -11,6 +11,7 @@ try:
 except ImportError:
     YOLO = None
 
+
 class ObjectAnalyzer:
     def __init__(self, thresholds: DetectionThresholds, models: OptionalModels):
         self.thresholds = thresholds
@@ -30,7 +31,7 @@ class ObjectAnalyzer:
             except Exception:
                 self.yolo_model = None
 
-def analyze(
+    def analyze(
         self,
         frame,
         face_bbox: tuple[int, int, int, int] | None = None,
@@ -42,7 +43,10 @@ def analyze(
         person_present = face_bbox is not None
         backend = "hands"
 
-        if self.yolo_model is not None and frame_number % max(1, self.models.yolo_frame_stride) == 0:
+        if (
+            self.yolo_model is not None
+            and frame_number % max(1, self.models.yolo_frame_stride) == 0
+        ):
             backend = "yolo+hands"
             self.last_boxes = self._run_yolo(frame)
 
@@ -52,7 +56,9 @@ def analyze(
             if label == "person":
                 person_present = True
 
-        hand_on_face = self._hand_on_face(hands_result, face_bbox, frame.shape[1], frame.shape[0])
+        hand_on_face = self._hand_on_face(
+            hands_result, face_bbox, frame.shape[1], frame.shape[0]
+        )
         if hands_result.multi_hand_landmarks and not person_present:
             person_present = True
 
@@ -73,7 +79,9 @@ def analyze(
             backend=backend,
         )
         debug = {
-            "hand_landmarks": hands_result.multi_hand_landmarks if hands_result else None,
+            "hand_landmarks": (
+                hands_result.multi_hand_landmarks if hands_result else None
+            ),
             "yolo_boxes": self.last_boxes,
         }
         return metrics, debug
@@ -81,8 +89,18 @@ def analyze(
     def close(self) -> None:
         self.hands.close()
 
-    def _hand_on_face(self, hands_result, face_bbox: tuple[int, int, int, int] | None, frame_width: int, frame_height: int) -> bool:
-        if face_bbox is None or not hands_result or not hands_result.multi_hand_landmarks:
+    def _hand_on_face(
+        self,
+        hands_result,
+        face_bbox: tuple[int, int, int, int] | None,
+        frame_width: int,
+        frame_height: int,
+    ) -> bool:
+        if (
+            face_bbox is None
+            or not hands_result
+            or not hands_result.multi_hand_landmarks
+        ):
             return False
 
         x1, y1, x2, y2 = face_bbox
@@ -100,7 +118,7 @@ def analyze(
                     return True
         return False
 
-def _run_yolo(self, frame) -> list[tuple[tuple[int, int, int, int], str, float]]:
+    def _run_yolo(self, frame) -> list[tuple[tuple[int, int, int, int], str, float]]:
         if self.yolo_model is None:
             return []
 

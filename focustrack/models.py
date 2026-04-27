@@ -74,16 +74,32 @@ class ProductivitySnapshot:
             "screen_component": round(self.screen_component, 2),
             "attention_state": self.attention.attention_state,
             "gaze_direction": self.attention.gaze_direction,
-            "avg_ear": round(self.attention.avg_ear, 4) if self.attention.avg_ear is not None else None,
+            "avg_ear": (
+                round(self.attention.avg_ear, 4)
+                if self.attention.avg_ear is not None
+                else None
+            ),
             "fatigue_score": round(self.attention.fatigue_score, 4),
             "blink_count": self.attention.blink_count,
             "face_detected": self.attention.face_detected,
             "eyes_closed": self.attention.eyes_closed,
             "posture_state": self.posture.posture_state,
             "posture_score": round(self.posture.posture_score, 2),
-            "shoulder_tilt": round(self.posture.shoulder_tilt, 4) if self.posture.shoulder_tilt is not None else None,
-            "torso_lean": round(self.posture.torso_lean, 4) if self.posture.torso_lean is not None else None,
-            "head_offset": round(self.posture.head_offset, 4) if self.posture.head_offset is not None else None,
+            "shoulder_tilt": (
+                round(self.posture.shoulder_tilt, 4)
+                if self.posture.shoulder_tilt is not None
+                else None
+            ),
+            "torso_lean": (
+                round(self.posture.torso_lean, 4)
+                if self.posture.torso_lean is not None
+                else None
+            ),
+            "head_offset": (
+                round(self.posture.head_offset, 4)
+                if self.posture.head_offset is not None
+                else None
+            ),
             "phone_detected": self.objects.phone_detected,
             "hand_on_face": self.objects.hand_on_face,
             "person_present": self.objects.person_present,
@@ -94,4 +110,3 @@ class ProductivitySnapshot:
             "screen_productivity_score": round(self.screen.productivity_score, 2),
             "screenshot_path": self.screen.screenshot_path,
         }
-
