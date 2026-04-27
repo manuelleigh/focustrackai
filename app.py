@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from focustrack.config import FocusTrackConfig, OptionalModels, ProductivityWeights
+from focustrack.monitor import FocusTrackMonitor
 from focustrack.monitoring.storage import StorageManager
 
 
@@ -120,6 +121,38 @@ st.caption("Vision por computadora + reglas de IA para estimar atencion, fatiga,
 config, camera_index, refresh_seconds = _build_config()
 storage = StorageManager(config.data_dir)
 
+if "monitor" not in st.session_state:
+    st.session_state.monitor = None
+if "monitor_running" not in st.session_state:
+    st.session_state.monitor_running = False
+if "last_frame" not in st.session_state:
+    st.session_state.last_frame = None
+
+controls_left, controls_right = st.columns([1, 3])
+with controls_left:
+    start_clicked = st.button("Iniciar monitoreo", use_container_width=True, type="primary", disabled=st.session_state.monitor_running)
+with controls_right:
+    stop_clicked = st.button("Detener monitoreo", use_container_width=True, disabled=not st.session_state.monitor_running)
+
+if start_clicked:
+    try:
+        if st.session_state.monitor is not None:
+            st.session_state.monitor.stop()
+        monitor = FocusTrackMonitor(config=config, camera_index=camera_index)
+        monitor.start()
+        st.session_state.monitor = monitor
+        st.session_state.monitor_running = True
+    except Exception as exc:
+        st.error(f"No fue posible iniciar el monitoreo: {exc}")
+        st.session_state.monitor = None
+        st.session_state.monitor_running = False
+
+if stop_clicked:
+    if st.session_state.monitor is not None:
+        st.session_state.monitor.stop()
+    st.session_state.monitor = None
+    st.session_state.monitor_running = False
+
 status_col, info_col = st.columns([1.2, 2])
 with status_col:
     history = storage.load_history(limit=200)
@@ -139,5 +172,33 @@ with info_col:
 frame_placeholder = st.empty()
 alert_placeholder = st.empty()
 
+if st.session_state.monitor_running and st.session_state.monitor is not None:
+    try:
+        snapshot, frame = st.session_state.monitor.process_next()
+        st.session_state.last_frame = frame
+        history = storage.load_history(limit=200)
+
+        if snapshot.productivity_label == "Distraido":
+            alert_placeholder.error("Nivel de distraccion alto. Conviene revisar la causa o activar alertas.")
+        elif snapshot.productivity_label == "Regular":
+            alert_placeholder.warning("Atencion irregular detectada. Revisa postura, mirada o actividad en pantalla.")
+        else:
+            alert_placeholder.success("Comportamiento dentro del rango productivo.")
+    except Exception as exc:
+        alert_placeholder.error(f"Error de monitoreo: {exc}")
+        if st.session_state.monitor is not None:
+            st.session_state.monitor.stop()
+        st.session_state.monitor = None
+        st.session_state.monitor_running = False
+
+if st.session_state.last_frame is not None:
+    frame_placeholder.image(_frame_to_rgb(st.session_state.last_frame), caption="Vista analizada", use_container_width=True)
+else:
+    frame_placeholder.info("Cuando inicies el monitoreo se mostrara aqui el frame anotado en tiempo real.")
+
 history = storage.load_history(limit=400)
 _render_history(history, refresh_seconds)
+
+if st.session_state.monitor_running:
+    time.sleep(refresh_seconds)
+    st.rerun()
