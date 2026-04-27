@@ -11,17 +11,22 @@ try:
 except ImportError:
     YOLO = None
 
+HAS_MEDIAPIPE_SOLUTIONS = hasattr(mp, "solutions")
+
 
 class ObjectAnalyzer:
     def __init__(self, thresholds: DetectionThresholds, models: OptionalModels):
         self.thresholds = thresholds
         self.models = models
-        self.hands = mp.solutions.hands.Hands(
-            static_image_mode=False,
-            max_num_hands=2,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
-        )
+        self.use_mediapipe = HAS_MEDIAPIPE_SOLUTIONS
+        self.hands = None
+        if self.use_mediapipe:
+            self.hands = mp.solutions.hands.Hands(
+                static_image_mode=False,
+                max_num_hands=2,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
         self.yolo_model = None
         self.last_boxes: list[tuple[tuple[int, int, int, int], str, float]] = []
 
@@ -38,10 +43,10 @@ class ObjectAnalyzer:
         frame_number: int = 0,
     ) -> tuple[ObjectMetrics, dict[str, object]]:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        hands_result = self.hands.process(rgb_frame)
+        hands_result = self.hands.process(rgb_frame) if self.hands is not None else None
         phone_detected = False
         person_present = face_bbox is not None
-        backend = "hands"
+        backend = "hands" if self.hands is not None else "fallback"
 
         if (
             self.yolo_model is not None
@@ -56,10 +61,16 @@ class ObjectAnalyzer:
             if label == "person":
                 person_present = True
 
-        hand_on_face = self._hand_on_face(
-            hands_result, face_bbox, frame.shape[1], frame.shape[0]
-        )
-        if hands_result.multi_hand_landmarks and not person_present:
+        hand_on_face = False
+        if hands_result is not None:
+            hand_on_face = self._hand_on_face(
+                hands_result, face_bbox, frame.shape[1], frame.shape[0]
+            )
+        if (
+            hands_result is not None
+            and hands_result.multi_hand_landmarks
+            and not person_present
+        ):
             person_present = True
 
         if not person_present:
@@ -87,7 +98,8 @@ class ObjectAnalyzer:
         return metrics, debug
 
     def close(self) -> None:
-        self.hands.close()
+        if self.hands is not None:
+            self.hands.close()
 
     def _hand_on_face(
         self,

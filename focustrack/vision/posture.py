@@ -6,20 +6,29 @@ import mediapipe as mp
 from focustrack.config import DetectionThresholds
 from focustrack.models import PostureMetrics
 
+HAS_MEDIAPIPE_SOLUTIONS = hasattr(mp, "solutions")
+
 
 class PostureAnalyzer:
     def __init__(self, thresholds: DetectionThresholds):
         self.thresholds = thresholds
-
-        self.pose = mp.solutions.pose.Pose(
-            static_image_mode=False,
-            model_complexity=1,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
-        )
+        self.use_mediapipe = HAS_MEDIAPIPE_SOLUTIONS
+        self.pose = None
+        if self.use_mediapipe:
+            self.pose = mp.solutions.pose.Pose(
+                static_image_mode=False,
+                model_complexity=1,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
 
     def analyze(self, frame) -> tuple[PostureMetrics, dict[str, object]]:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        if self.pose is None:
+            return PostureMetrics(posture_state="sin_datos", posture_score=50.0), {
+                "pose_landmarks": None
+            }
+
         result = self.pose.process(rgb_frame)
         debug: dict[str, object] = {"pose_landmarks": None}
 
@@ -40,7 +49,9 @@ class PostureAnalyzer:
         torso_lean = abs(torso_center_x - hip_center_x)
         head_offset = abs(nose.x - torso_center_x)
 
-        tilt_penalty = (shoulder_tilt / max(self.thresholds.shoulder_tilt_max, 1e-6)) * 25.0
+        tilt_penalty = (
+            shoulder_tilt / max(self.thresholds.shoulder_tilt_max, 1e-6)
+        ) * 25.0
         lean_penalty = (torso_lean / max(self.thresholds.torso_lean_max, 1e-6)) * 35.0
         head_penalty = (head_offset / max(self.thresholds.head_offset_max, 1e-6)) * 25.0
         score = max(0.0, 100.0 - tilt_penalty - lean_penalty - head_penalty)
@@ -62,4 +73,5 @@ class PostureAnalyzer:
         return metrics, debug
 
     def close(self) -> None:
-        self.pose.close()
+        if self.pose is not None:
+            self.pose.close()

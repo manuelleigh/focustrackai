@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 
 import cv2
-import mediapipe as mp
 import numpy as np
 
 from focustrack.config import FocusTrackConfig
@@ -32,10 +31,6 @@ class FocusTrackMonitor:
         self.capture: cv2.VideoCapture | None = None
         self.frame_number = 0
         self.session_id = uuid.uuid4().hex[:8]
-        self.mp_drawing = mp.solutions.drawing_utils
-        self.mp_face_mesh = mp.solutions.face_mesh
-        self.mp_pose = mp.solutions.pose
-        self.mp_hands = mp.solutions.hands
 
     def start(self) -> None:
         if self.capture is not None and self.capture.isOpened():
@@ -104,46 +99,6 @@ class FocusTrackMonitor:
         object_debug: dict[str, object],
     ) -> np.ndarray:
         face_landmarks = attention_debug.get("face_landmarks")
-        if face_landmarks is not None:
-            self.mp_drawing.draw_landmarks(
-                frame,
-                face_landmarks,
-                self.mp_face_mesh.FACEMESH_CONTOURS,
-                landmark_drawing_spec=None,
-                connection_drawing_spec=self.mp_drawing.DrawingSpec(
-                    color=(80, 180, 255), thickness=1, circle_radius=1
-                ),
-            )
-
-        pose_landmarks = posture_debug.get("pose_landmarks")
-        if pose_landmarks is not None:
-            self.mp_drawing.draw_landmarks(
-                frame,
-                pose_landmarks,
-                self.mp_pose.POSE_CONNECTIONS,
-                landmark_drawing_spec=self.mp_drawing.DrawingSpec(
-                    color=(0, 255, 170), thickness=2, circle_radius=2
-                ),
-                connection_drawing_spec=self.mp_drawing.DrawingSpec(
-                    color=(255, 255, 255), thickness=2
-                ),
-            )
-
-        hand_landmarks = object_debug.get("hand_landmarks")
-        if hand_landmarks:
-            for hand in hand_landmarks:
-                self.mp_drawing.draw_landmarks(
-                    frame,
-                    hand,
-                    self.mp_hands.HAND_CONNECTIONS,
-                    landmark_drawing_spec=self.mp_drawing.DrawingSpec(
-                        color=(255, 204, 0), thickness=2, circle_radius=2
-                    ),
-                    connection_drawing_spec=self.mp_drawing.DrawingSpec(
-                        color=(255, 255, 255), thickness=1
-                    ),
-                )
-
         face_bbox = attention_debug.get("face_bbox")
         if face_bbox:
             x1, y1, x2, y2 = face_bbox
