@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from focustrack.config import FocusTrackConfig, OptionalModels, ProductivityWeights
+from focustrack.monitoring.storage import StorageManager
 
 
 st.set_page_config(
@@ -54,7 +55,37 @@ def _build_config() -> tuple[FocusTrackConfig, int, float]:
     return config, camera_index, refresh_seconds
 
 
+def _render_kpis(history: pd.DataFrame) -> None:
+    if history.empty:
+        st.info("Aun no hay registros. Inicia el monitoreo para generar datos.")
+        return
+
+    last = history.iloc[-1]
+    metric_1, metric_2, metric_3, metric_4 = st.columns(4)
+    metric_1.metric("Score actual", f"{last['productivity_score']:.1f}")
+    metric_2.metric("Clasificacion", str(last["productivity_label"]))
+    metric_3.metric("Atencion", str(last["attention_state"]))
+    metric_4.metric("App activa", str(last["active_app"]))
+
+
 st.title("Sistema Inteligente de Monitoreo de Rendimiento y Distraccion Laboral")
 st.caption("Vision por computadora + reglas de IA para estimar atencion, fatiga, postura, distracciones y actividad en PC.")
 
 config, camera_index, refresh_seconds = _build_config()
+storage = StorageManager(config.data_dir)
+
+status_col, info_col = st.columns([1.2, 2])
+with status_col:
+    history = storage.load_history(limit=200)
+    _render_kpis(history)
+with info_col:
+    st.markdown(
+        """
+        **Que detecta esta demo**
+
+        - Rostro, ojos, EAR y mirada con `OpenCV + MediaPipe`, con soporte opcional para `dlib`.
+        - Postura corporal usando `MediaPipe Pose`.
+        - Celular y objetos si `YOLO` esta disponible; si no, usa heuristicas de manos y ausencia.
+        - Aplicacion activa y clasificacion trabajo vs distraccion en el escritorio.
+        """
+    )
