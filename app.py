@@ -68,6 +68,52 @@ def _render_kpis(history: pd.DataFrame) -> None:
     metric_4.metric("App activa", str(last["active_app"]))
 
 
+def _render_history(history: pd.DataFrame, refresh_seconds: float) -> None:
+    if history.empty:
+        return
+
+    history = history.copy()
+    history = history.dropna(subset=["timestamp"])
+    if history.empty:
+        return
+
+    chart_left, chart_right = st.columns(2)
+    with chart_left:
+        st.subheader("Score en el tiempo")
+        score_chart = history.set_index("timestamp")[["productivity_score"]].tail(120)
+        st.line_chart(score_chart)
+
+    with chart_right:
+        st.subheader("Tiempo estimado por aplicacion")
+        time_by_app = (
+            history.tail(120)
+            .groupby("active_app")
+            .size()
+            .sort_values(ascending=False)
+            .head(8)
+            .mul(refresh_seconds)
+            .rename("segundos")
+        )
+        st.bar_chart(time_by_app)
+
+    st.subheader("Ultimos eventos")
+    cols = [
+        "timestamp",
+        "productivity_score",
+        "productivity_label",
+        "attention_state",
+        "posture_state",
+        "object_state",
+        "active_app",
+        "screen_category",
+    ]
+    st.dataframe(history.tail(20)[cols], use_container_width=True, hide_index=True)
+
+
+def _frame_to_rgb(frame):
+    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+
 st.title("Sistema Inteligente de Monitoreo de Rendimiento y Distraccion Laboral")
 st.caption("Vision por computadora + reglas de IA para estimar atencion, fatiga, postura, distracciones y actividad en PC.")
 
@@ -89,3 +135,9 @@ with info_col:
         - Aplicacion activa y clasificacion trabajo vs distraccion en el escritorio.
         """
     )
+
+frame_placeholder = st.empty()
+alert_placeholder = st.empty()
+
+history = storage.load_history(limit=400)
+_render_history(history, refresh_seconds)
