@@ -66,3 +66,32 @@ class ScreenActivityMonitor:
             return str(destination)
         except Exception:
             return None
+        
+    def _get_windows_foreground_window(self) -> tuple[str, int | None]:
+        user32 = ctypes.windll.user32
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return "", None
+
+        title_length = user32.GetWindowTextLengthW(hwnd)
+        buffer = ctypes.create_unicode_buffer(title_length + 1)
+        user32.GetWindowTextW(hwnd, buffer, title_length + 1)
+
+        process_id = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+
+        return buffer.value, process_id.value or None
+
+    def _fallback_active_process(self) -> str:
+        candidates = []
+        for process in psutil.process_iter(attrs=["pid", "name", "cpu_percent"]):
+            try:
+                candidates.append(process.info)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        if not candidates:
+            return "Desconocida"
+
+        most_active = max(candidates, key=lambda item: item.get("cpu_percent", 0.0))
+        return most_active.get("name") or "Desconocida"
