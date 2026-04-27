@@ -30,3 +30,9 @@ class PostureAnalyzer:
         right_shoulder = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_SHOULDER.value]
         left_hip = landmarks[mp.solutions.pose.PoseLandmark.LEFT_HIP.value]
         right_hip = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_HIP.value]
+
+        shoulder_tilt = abs(left_shoulder.y - right_shoulder.y)
+        torso_center_x = (left_shoulder.x + right_shoulder.x) / 2.0
+        hip_center_x = (left_hip.x + right_hip.x) / 2.0
+        torso_lean = abs(torso_center_x - hip_center_x)
+        head_offset = abs(nose.x - torso_center_x)
