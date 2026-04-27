@@ -41,3 +41,17 @@ class ScreenActivityMonitor:
             productivity_score=score,
             screenshot_path=screenshot_path,
         )
+    
+    def _classify_activity(self, app_name: str, window_title: str) -> tuple[str, float]:
+        sample = f"{app_name} {window_title}".lower()
+
+        if any(keyword in sample for keyword in self.config.distracting_keywords):
+            return "distraccion", 15.0
+
+        if any(keyword in sample for keyword in self.config.productive_keywords):
+            return "trabajo", 100.0
+
+        if sample.strip():
+            return "neutral", 60.0
+
+        return "sin_datos", 50.0
