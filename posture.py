@@ -16,6 +16,7 @@ class PostureAnalyzer:
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5,
         )
+        
     def analyze(self, frame) -> tuple[PostureMetrics, dict[str, object]]:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         result = self.pose.process(rgb_frame)
@@ -23,6 +24,7 @@ class PostureAnalyzer:
 
         if not result.pose_landmarks:
             return PostureMetrics(posture_state="sin_datos", posture_score=50.0), debug
+            
         debug["pose_landmarks"] = result.pose_landmarks
         landmarks = result.pose_landmarks.landmark
         nose = landmarks[mp.solutions.pose.PoseLandmark.NOSE.value]
@@ -36,3 +38,9 @@ class PostureAnalyzer:
         hip_center_x = (left_hip.x + right_hip.x) / 2.0
         torso_lean = abs(torso_center_x - hip_center_x)
         head_offset = abs(nose.x - torso_center_x)
+
+        tilt_penalty = (shoulder_tilt / max(self.thresholds.shoulder_tilt_max, 1e-6)) * 25.0
+        lean_penalty = (torso_lean / max(self.thresholds.torso_lean_max, 1e-6)) * 35.0
+        head_penalty = (head_offset / max(self.thresholds.head_offset_max, 1e-6)) * 25.0
+        score = max(0.0, 100.0 - tilt_penalty - lean_penalty - head_penalty)
+
