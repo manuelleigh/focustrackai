@@ -84,7 +84,7 @@ streamlit run app.py
 - Historial CSV: `data/productivity_history.csv`
 - Capturas de pantalla opcionales: `data/screenshots/`
 
-## Ideas para seguir subiendo la nota
+## Ideas para seguir mejorando
 
 - Entrenar un clasificador supervisado con historicos reales.
 - Agregar alertas sonoras y notificaciones.
