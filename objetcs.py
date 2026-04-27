@@ -30,6 +30,7 @@ class ObjectAnalyzer:
                 self.yolo_model = YOLO(models.yolo_weights)
             except Exception:
                 self.yolo_model = None
+                
     def analyze(
         self,
         frame,
@@ -38,7 +39,6 @@ class ObjectAnalyzer:
     ) -> tuple[ObjectMetrics, dict[str, object]]:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         hands_result = self.hands.process(rgb_frame)
-
         phone_detected = False
         person_present = face_bbox is not None
         backend = "hands"
@@ -71,10 +71,31 @@ class ObjectAnalyzer:
             object_state=object_state,
             backend=backend,
         )
-
         debug = {
             "hand_landmarks": hands_result.multi_hand_landmarks if hands_result else None,
             "yolo_boxes": self.last_boxes,
         }
-
         return metrics, debug
+
+    def close(self) -> None:
+        self.hands.close()
+
+    def _hand_on_face(self, hands_result, face_bbox: tuple[int, int, int, int] | None, frame_width: int, frame_height: int) -> bool:
+        if face_bbox is None or not hands_result or not hands_result.multi_hand_landmarks:
+            return False
+
+        x1, y1, x2, y2 = face_bbox
+        face_width = max(1, x2 - x1)
+        face_height = max(1, y2 - y1)
+        expand_x = int(face_width * self.thresholds.hand_face_distance)
+        expand_y = int(face_height * self.thresholds.hand_face_distance)
+        zone = (x1 - expand_x, y1 - expand_y, x2 + expand_x, y2 + expand_y)
+
+        for hand_landmarks in hands_result.multi_hand_landmarks:
+            for landmark in hand_landmarks.landmark:
+                point_x = int(landmark.x * frame_width)
+                point_y = int(landmark.y * frame_height)
+                if zone[0] <= point_x <= zone[2] and zone[1] <= point_y <= zone[3]:
+                    return True
+        return False
+        
