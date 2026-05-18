@@ -199,6 +199,12 @@ else:
 history = storage.load_history(limit=400)
 _render_history(history, refresh_seconds)
 
+report_tab, ai_tab = st.tabs(["Reporte de sesion", "Clasificador IA"])
+with report_tab:
+    st.info("El modulo de reportes exportables estara disponible en esta pestaña.")
+with ai_tab:
+    st.info("El clasificador IA estara disponible en esta pestaña.")
+
 if st.session_state.monitor_running:
     time.sleep(refresh_seconds)
     st.rerun()
