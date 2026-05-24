@@ -105,3 +105,103 @@ class ObjectAnalyzer:
         }
 
         return metrics, debug
+
+    def close(self) -> None:
+        if self.hands is not None:
+            self.hands.close()
+
+    def _hand_on_face(
+        self,
+        hands_result,
+        face_bbox: tuple[int, int, int, int] | None,
+        frame_width: int,
+        frame_height: int
+    ) -> bool:
+
+        if face_bbox is None or not hands_result or not hands_result.multi_hand_landmarks:
+            return False
+
+        x1, y1, x2, y2 = face_bbox
+
+        face_width = max(1, x2 - x1)
+        face_height = max(1, y2 - y1)
+
+        expand_x = int(face_width * self.thresholds.hand_face_distance)
+        expand_y = int(face_height * self.thresholds.hand_face_distance)
+
+        zone = (
+            x1 - expand_x,
+            y1 - expand_y,
+            x2 + expand_x,
+            y2 + expand_y
+        )
+
+        for hand_landmarks in hands_result.multi_hand_landmarks:
+            for landmark in hand_landmarks.landmark:
+
+                point_x = int(landmark.x * frame_width)
+                point_y = int(landmark.y * frame_height)
+
+                if zone[0] <= point_x <= zone[2] and zone[1] <= point_y <= zone[3]:
+                    return True
+
+        return False
+
+    def _run_yolo(self, frame) -> list[tuple[tuple[int, int, int, int], str, float]]:
+
+        if self.yolo_model is None:
+            return []
+
+        try:
+            result = self.yolo_model.predict(
+                frame,
+                conf=0.35,
+                verbose=False
+            )[0]
+
+        except Exception:
+            return self.last_boxes
+
+        boxes: list[tuple[tuple[int, int, int, int], str, float]] = []
+
+        for box in result.boxes:
+
+            cls_id = int(box.cls[0].item())
+            confidence = float(box.conf[0].item())
+
+            label = result.names.get(cls_id, str(cls_id))
+
+            x1, y1, x2, y2 = [
+                int(value)
+                for value in box.xyxy[0].tolist()
+            ]
+
+            boxes.append(
+                ((x1, y1, x2, y2), label, confidence)
+            )
+
+        return boxes
+
+    def _confidence(
+        self,
+        phone_detected: bool,
+        hand_on_face: bool,
+        person_present: bool,
+        backend: str
+    ) -> float:
+
+        confidence = 0.35 if person_present else 0.15
+
+        if backend.startswith("yolo"):
+            confidence += 0.35
+
+        elif backend == "hands":
+            confidence += 0.2
+
+        if phone_detected:
+            confidence += 0.2
+
+        if hand_on_face:
+            confidence += 0.1
+
+        return round(min(1.0, confidence), 4)
