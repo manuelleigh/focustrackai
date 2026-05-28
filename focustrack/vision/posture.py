@@ -131,3 +131,39 @@ class PostureAnalyzer:
     def close(self) -> None:
         if self.pose is not None:
             self.pose.close()
+
+    def _analyze_with_opencv(self, frame) -> tuple[PostureMetrics, dict[str, object]]:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(80, 80))
+        debug: dict[str, object] = {"pose_landmarks": None, "posture_bbox": None}
+
+        if len(faces) == 0:
+            return PostureMetrics(posture_state="sin_datos", posture_score=50.0), debug
+
+        x, y, w, h = max(faces, key=lambda item: item[2] * item[3])
+        debug["posture_bbox"] = (int(x), int(y), int(x + w), int(y + h))
+
+        frame_height, frame_width = frame.shape[:2]
+        face_center_x = (x + (w / 2.0)) / max(frame_width, 1)
+        face_center_y = (y + (h / 2.0)) / max(frame_height, 1)
+        head_offset = abs(face_center_x - 0.5)
+        vertical_offset = abs(face_center_y - 0.35)
+        face_ratio = h / max(frame_height, 1)
+        distance_penalty = abs(face_ratio - 0.28) * 180.0
+        score = max(0.0, 100.0 - (head_offset * 140.0) - (vertical_offset * 100.0) - distance_penalty)
+
+        if score >= 75.0:
+            posture_state = "correcta"
+        elif score >= 50.0:
+            posture_state = "mejorable"
+        else:
+            posture_state = "encorvada"
+
+        return PostureMetrics(
+            posture_state=posture_state,
+            posture_score=score,
+            shoulder_tilt=None,
+            torso_lean=vertical_offset,
+            head_offset=head_offset,
+        ), debug
+
