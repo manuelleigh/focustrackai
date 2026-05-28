@@ -177,7 +177,3 @@ class AttentionAnalyzer:
         if gaze_ratio < self.thresholds.gaze_center_min:
             return "izquierda"
         return "derecha"
-
-
-    
-        
