@@ -45,3 +45,14 @@ class StorageManager:
             history = history.tail(limit)
 
         return history
+
+     def append_audit_event(self, event_type: str, details: dict[str, object] | None = None, session_id: str | None = None) -> None:
+        payload = details or {}
+        with self._connect() as connection:
+            connection.execute(
+                """
+                insert into audit_events(timestamp, event_type, session_id, details_json)
+                values (?, ?, ?, ?)
+                """,
+                (datetime.now().isoformat(), event_type, session_id, json.dumps(payload, ensure_ascii=False, default=str)),
+            )
