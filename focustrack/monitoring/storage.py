@@ -30,6 +30,10 @@ class StorageManager:
             writer.writerow(row)
 
     def load_history(self, limit: int | None = None) -> pd.DataFrame:
+        sqlite_history = self._load_history_sqlite(limit)
+        if not sqlite_history.empty:
+            return sqlite_history
+
         if not self.csv_path.exists():
             return pd.DataFrame()
 
