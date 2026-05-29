@@ -46,7 +46,7 @@ class StorageManager:
 
         return history
 
-     def append_audit_event(self, event_type: str, details: dict[str, object] | None = None, session_id: str | None = None) -> None:
+    def append_audit_event(self, event_type: str, details: dict[str, object] | None = None, session_id: str | None = None) -> None:
         payload = details or {}
         with self._connect() as connection:
             connection.execute(
@@ -56,3 +56,30 @@ class StorageManager:
                 """,
                 (datetime.now().isoformat(), event_type, session_id, json.dumps(payload, ensure_ascii=False, default=str)),
             )
+    
+    def load_audit_events(self, limit: int | None = 200) -> pd.DataFrame:
+        query = "select timestamp, event_type, session_id, details_json from audit_events order by id"
+        params: tuple[object, ...] = ()
+        if limit is not None:
+            query += " desc limit ?"
+            params = (limit,)
+
+        with self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+
+        if limit is not None:
+            rows = list(reversed(rows))
+
+        events = [
+            {
+                "timestamp": row[0],
+                "event_type": row[1],
+                "session_id": row[2],
+                "details": row[3],
+            }
+            for row in rows
+        ]
+        frame = pd.DataFrame(events)
+        if "timestamp" in frame.columns:
+            frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
+        return frame
