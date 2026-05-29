@@ -256,3 +256,19 @@ class StorageManager:
             frame["approved_for_training"] = frame["approved_for_training"].astype(bool)
             frame["updated_at"] = pd.to_datetime(frame["updated_at"], errors="coerce")
         return frame
+    
+    def upsert_alert_rule(self, rule_key: str, enabled: bool, threshold: float, window_seconds: float, severity: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                insert into alert_rules(rule_key, enabled, threshold, window_seconds, severity, updated_at)
+                values (?, ?, ?, ?, ?, ?)
+                on conflict(rule_key) do update set
+                    enabled=excluded.enabled,
+                    threshold=excluded.threshold,
+                    window_seconds=excluded.window_seconds,
+                    severity=excluded.severity,
+                    updated_at=excluded.updated_at
+                """,
+                (rule_key, int(enabled), threshold, window_seconds, severity, datetime.now().isoformat()),
+            )
