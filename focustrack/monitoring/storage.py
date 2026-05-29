@@ -187,3 +187,58 @@ class StorageManager:
                 )
                 """
             )
+    def append_human_label(
+        self,
+        session_id: str,
+        label: str,
+        start_time: str | None = None,
+        end_time: str | None = None,
+        notes: str = "",
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                insert into human_labels(created_at, session_id, start_time, end_time, label, notes)
+                values (?, ?, ?, ?, ?, ?)
+                """,
+                (datetime.now().isoformat(), session_id, start_time, end_time, label, notes),
+            )
+
+    def load_human_labels(self) -> pd.DataFrame:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                select created_at, session_id, start_time, end_time, label, notes
+                from human_labels
+                order by id
+                """
+            ).fetchall()
+
+        frame = pd.DataFrame(rows, columns=["created_at", "session_id", "start_time", "end_time", "label", "notes"])
+        for column in ["created_at", "start_time", "end_time"]:
+            if column in frame:
+                frame[column] = pd.to_datetime(frame[column], errors="coerce")
+        return frame
+
+    def upsert_session_note(
+        self,
+        session_id: str,
+        name: str,
+        description: str = "",
+        approved_for_training: bool = False,
+        status: str = "registrada",
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                insert into session_notes(session_id, name, description, approved_for_training, status, updated_at)
+                values (?, ?, ?, ?, ?, ?)
+                on conflict(session_id) do update set
+                    name=excluded.name,
+                    description=excluded.description,
+                    approved_for_training=excluded.approved_for_training,
+                    status=excluded.status,
+                    updated_at=excluded.updated_at
+                """,
+                (session_id, name, description, int(approved_for_training), status, datetime.now().isoformat()),
+            )
