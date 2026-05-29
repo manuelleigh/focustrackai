@@ -242,3 +242,17 @@ class StorageManager:
                 """,
                 (session_id, name, description, int(approved_for_training), status, datetime.now().isoformat()),
             )
+    def load_session_notes(self) -> pd.DataFrame:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                select session_id, name, description, approved_for_training, status, updated_at
+                from session_notes
+                order by updated_at desc
+                """
+            ).fetchall()
+        frame = pd.DataFrame(rows, columns=["session_id", "name", "description", "approved_for_training", "status", "updated_at"])
+        if not frame.empty:
+            frame["approved_for_training"] = frame["approved_for_training"].astype(bool)
+            frame["updated_at"] = pd.to_datetime(frame["updated_at"], errors="coerce")
+        return frame
