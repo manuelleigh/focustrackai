@@ -272,3 +272,18 @@ class StorageManager:
                 """,
                 (rule_key, int(enabled), threshold, window_seconds, severity, datetime.now().isoformat()),
             )
+
+    def load_alert_rules(self) -> pd.DataFrame:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                select rule_key, enabled, threshold, window_seconds, severity, updated_at
+                from alert_rules
+                order by rule_key
+                """
+            ).fetchall()
+        frame = pd.DataFrame(rows, columns=["rule_key", "enabled", "threshold", "window_seconds", "severity", "updated_at"])
+        if not frame.empty:
+            frame["enabled"] = frame["enabled"].astype(bool)
+            frame["updated_at"] = pd.to_datetime(frame["updated_at"], errors="coerce")
+        return frame
