@@ -83,3 +83,19 @@ class StorageManager:
         if "timestamp" in frame.columns:
             frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
         return frame
+    
+     def storage_health(self) -> dict[str, object]:
+        snapshot_count = 0
+        audit_count = 0
+        with self._connect() as connection:
+            snapshot_count = int(connection.execute("select count(*) from snapshots").fetchone()[0])
+            audit_count = int(connection.execute("select count(*) from audit_events").fetchone()[0])
+
+        return {
+            "sqlite_path": str(self.db_path),
+            "sqlite_exists": self.db_path.exists(),
+            "csv_path": str(self.csv_path),
+            "csv_exists": self.csv_path.exists(),
+            "snapshots": snapshot_count,
+            "audit_events": audit_count,
+        }
