@@ -10,15 +10,17 @@ import pandas as pd
 
 from focustrack.models import ProductivitySnapshot
 
-
 class StorageManager:
     def __init__(self, data_dir: Path):
         self.data_dir = data_dir
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.csv_path = self.data_dir / "productivity_history.csv"
+        self.db_path = self.data_dir / "focustrack.db"
+        self._ensure_schema()
 
     def append_snapshot(self, snapshot: ProductivitySnapshot) -> None:
         row = snapshot.to_row()
+        self.append_history_row(row)
         write_header = not self.csv_path.exists()
 
         with self.csv_path.open("a", newline="", encoding="utf-8") as handle:
