@@ -287,3 +287,19 @@ class StorageManager:
             frame["enabled"] = frame["enabled"].astype(bool)
             frame["updated_at"] = pd.to_datetime(frame["updated_at"], errors="coerce")
         return frame
+
+    def _append_snapshot_sqlite(self, row: dict[str, object]) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                insert into snapshots(timestamp, session_id, productivity_label, productivity_score, payload_json)
+                values (?, ?, ?, ?, ?)
+                """,
+                (
+                    str(row.get("timestamp", "")),
+                    str(row.get("session_id", "")),
+                    str(row.get("productivity_label", "")),
+                    float(row.get("productivity_score", 0.0) or 0.0),
+                    json.dumps(row, ensure_ascii=False, default=str),
+                ),
+            )
