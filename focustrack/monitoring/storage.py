@@ -99,9 +99,91 @@ class StorageManager:
             "snapshots": snapshot_count,
             "audit_events": audit_count,
         }
-        
+
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.db_path)
         connection.execute("pragma journal_mode=wal")
         connection.execute("pragma synchronous=normal")
         return connection    
+    
+    def _ensure_schema(self) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                create table if not exists snapshots (
+                    id integer primary key autoincrement,
+                    timestamp text not null,
+                    session_id text not null,
+                    productivity_label text not null,
+                    productivity_score real not null,
+                    payload_json text not null
+                )
+                """
+            )
+            connection.execute(
+                """
+                create index if not exists idx_snapshots_session_timestamp
+                on snapshots(session_id, timestamp)
+                """
+            )
+            connection.execute(
+                """
+                create table if not exists audit_events (
+                    id integer primary key autoincrement,
+                    timestamp text not null,
+                    event_type text not null,
+                    session_id text,
+                    details_json text not null
+                )
+                """
+            )
+            connection.execute(
+                """
+                create index if not exists idx_audit_session_timestamp
+                on audit_events(session_id, timestamp)
+                """
+            )
+            connection.execute(
+                """
+                create table if not exists human_labels (
+                    id integer primary key autoincrement,
+                    created_at text not null,
+                    session_id text not null,
+                    start_time text,
+                    end_time text,
+                    label text not null,
+                    notes text not null default ''
+                )
+                """
+            )
+            connection.execute(
+                """
+                create index if not exists idx_human_labels_session
+                on human_labels(session_id, start_time, end_time)
+                """
+            )
+            connection.execute(
+                """
+                create table if not exists session_notes (
+                    session_id text primary key,
+                    name text not null,
+                    description text not null default '',
+                    approved_for_training integer not null default 0,
+                    status text not null default 'registrada',
+                    updated_at text not null
+                )
+                """
+            )
+            connection.execute(
+                """
+                create table if not exists alert_rules (
+                    id integer primary key autoincrement,
+                    rule_key text not null unique,
+                    enabled integer not null,
+                    threshold real not null,
+                    window_seconds real not null,
+                    severity text not null,
+                    updated_at text not null
+                )
+                """
+            )
