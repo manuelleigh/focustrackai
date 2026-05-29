@@ -99,3 +99,9 @@ class StorageManager:
             "snapshots": snapshot_count,
             "audit_events": audit_count,
         }
+        
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.db_path)
+        connection.execute("pragma journal_mode=wal")
+        connection.execute("pragma synchronous=normal")
+        return connection    
