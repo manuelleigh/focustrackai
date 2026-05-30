@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+
 @dataclass
 class AlertRule:
     rule_key: str
@@ -22,6 +23,7 @@ DEFAULT_ALERT_RULES = [
     AlertRule("sleepy", "Somnolencia", "pct_somnoliento", 15.0, 60.0, "media"),
     AlertRule("distracting_apps", "Aplicaciones distractoras", "screen_distraccion_pct", 25.0, 60.0, "media"),
 ]
+
 
 def rules_from_frame(rules_frame: pd.DataFrame) -> list[AlertRule]:
     if rules_frame.empty:
@@ -45,3 +47,28 @@ def rules_from_frame(rules_frame: pd.DataFrame) -> list[AlertRule]:
         )
     return rules or DEFAULT_ALERT_RULES
 
+
+def evaluate_alerts(windows: pd.DataFrame, rules: list[AlertRule] | None = None) -> pd.DataFrame:
+    if windows.empty:
+        return pd.DataFrame(columns=["window_start", "window_end", "alerta", "severidad", "valor", "umbral"])
+    selected_rules = rules or DEFAULT_ALERT_RULES
+    rows: list[dict[str, object]] = []
+    for _, window in windows.iterrows():
+        for rule in selected_rules:
+            if not rule.enabled or rule.metric not in windows.columns:
+                continue
+            value = float(window.get(rule.metric, 0.0) or 0.0)
+            triggered = value < rule.threshold if rule.metric == "score_mean" else value >= rule.threshold
+            if triggered:
+                rows.append(
+                    {
+                        "session_id": window.get("session_id", ""),
+                        "window_start": window.get("window_start"),
+                        "window_end": window.get("window_end"),
+                        "alerta": rule.label,
+                        "severidad": rule.severity,
+                        "valor": round(value, 2),
+                        "umbral": rule.threshold,
+                    }
+                )
+    return pd.DataFrame(rows)
