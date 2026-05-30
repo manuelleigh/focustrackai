@@ -13,9 +13,140 @@ from focustrack.monitoring.storage import StorageManager
 
 st.set_page_config(
     page_title="FocusTrack AI",
-    page_icon=":brain:",
+    page_icon="FT",
     layout="wide",
 )
+
+
+def _inject_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        .stApp {
+            background: linear-gradient(180deg, #f8fafc 0%, #eef4ff 100%);
+            color: #0f172a;
+        }
+        section[data-testid="stSidebar"] {
+            background: #0f172a;
+            border-right: 1px solid #1e293b;
+        }
+        section[data-testid="stSidebar"] * {
+            color: #e5edf8 !important;
+        }
+        section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
+            color: #cbd5e1 !important;
+            font-weight: 650;
+        }
+        .block-container {
+            max-width: 1320px;
+            padding-top: 3.1rem;
+            padding-bottom: 3rem;
+        }
+        h1 {
+            color: #0f172a;
+            font-size: 2.15rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0 !important;
+            font-weight: 760 !important;
+            margin-bottom: 0.35rem !important;
+        }
+        h2, h3 {
+            color: #0f172a;
+            letter-spacing: 0 !important;
+        }
+        h2 {
+            font-size: 1.35rem !important;
+        }
+        .ft-hero {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 22px 24px;
+            box-shadow: 0 14px 36px rgba(15, 23, 42, 0.07);
+            margin-bottom: 16px;
+        }
+        .ft-kicker {
+            color: #1d4ed8;
+            font-size: 0.78rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 8px;
+        }
+        .ft-subtitle {
+            max-width: 900px;
+            color: #64748b;
+            font-size: 0.98rem;
+            line-height: 1.55;
+            margin-top: 8px;
+        }
+        .ft-notice {
+            border: 1px solid #bfdbfe;
+            background: #eff6ff;
+            color: #1e3a8a;
+            border-radius: 8px;
+            padding: 13px 16px;
+            margin: 14px 0 16px 0;
+            font-size: 0.94rem;
+        }
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 4px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .stTabs [data-baseweb="tab"] {
+            height: 42px;
+            padding: 0 14px;
+            border-radius: 6px 6px 0 0;
+            font-weight: 650;
+            color: #475569;
+        }
+        .stTabs [aria-selected="true"] {
+            color: #1d4ed8 !important;
+            background: #eff6ff;
+        }
+        div.stButton > button:first-child {
+            border-radius: 7px;
+            height: 42px;
+            font-weight: 700;
+            border: 1px solid #cbd5e1;
+        }
+        div.stButton > button[kind="primary"] {
+            background: #1d4ed8;
+            border-color: #1d4ed8;
+        }
+        div.stButton > button[kind="primary"]:hover {
+            background: #1e3a8a;
+            border-color: #1e3a8a;
+        }
+        [data-testid="stMetric"] {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 14px 16px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+        }
+        [data-testid="stMetricLabel"] p {
+            color: #64748b !important;
+            font-weight: 650;
+        }
+        div[data-testid="stDataFrame"] {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        code {
+            color: #0f766e !important;
+            background: #ecfdf5 !important;
+            border-radius: 4px;
+            padding: 0.1rem 0.25rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+_inject_styles()
 
 
 def _normalize_weights(raw_weights: dict[str, float]) -> ProductivityWeights:
