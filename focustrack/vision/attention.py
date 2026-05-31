@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-# pyrefly: ignore [missing-import]
+
 import cv2
-# pyrefly: ignore [missing-import]
 import numpy as np
 
 from focustrack.config import DetectionThresholds
@@ -11,7 +10,6 @@ from focustrack.models import AttentionMetrics
 from focustrack.vision.mp_compat import HAS_MEDIAPIPE_SOLUTIONS, MP_SOLUTIONS
 
 try:
-    # pyrefly: ignore [missing-import]
     import dlib
 except ImportError:  # pragma: no cover - optional dependency
     dlib = None
@@ -25,11 +23,7 @@ FACE_BBOX_REFERENCE = [10, 152, 234, 454]
 
 
 class AttentionAnalyzer:
-    def __init__(
-        self, 
-        thresholds: DetectionThresholds,
-        enable_dlib: bool = False,
-        dlib_shape_predictor: Path | None = None):
+    def __init__(self, thresholds: DetectionThresholds, enable_dlib: bool = False, dlib_shape_predictor: Path | None = None):
         self.thresholds = thresholds
         self.face_mesh = None
         self.closed_eye_frames = 0
@@ -78,6 +72,7 @@ class AttentionAnalyzer:
                 fatigue_score=0.0,
                 blink_count=self.blink_count,
                 backend=backend,
+                confidence=0.35 if face_detected else 0.1,
             )
             return metrics, debug
 
@@ -125,6 +120,7 @@ class AttentionAnalyzer:
             fatigue_score=fatigue_score,
             blink_count=self.blink_count,
             backend=backend,
+            confidence=self._confidence(face_detected=True, eyes_detected=True, fatigue_score=fatigue_score, gaze_direction=gaze_direction),
         )
         return metrics, debug
 
@@ -151,6 +147,7 @@ class AttentionAnalyzer:
                 fatigue_score=0.0,
                 blink_count=self.blink_count,
                 backend="opencv-haar",
+                confidence=0.1,
             )
             return metrics, debug
 
@@ -180,6 +177,7 @@ class AttentionAnalyzer:
             fatigue_score=0.0,
             blink_count=self.blink_count,
             backend="opencv-haar",
+            confidence=0.65 if eyes_detected else 0.45,
         )
         return metrics, debug
 
@@ -243,3 +241,15 @@ class AttentionAnalyzer:
         if gaze_ratio < self.thresholds.gaze_center_min:
             return "izquierda"
         return "derecha"
+
+    def _confidence(self, face_detected: bool, eyes_detected: bool, fatigue_score: float, gaze_direction: str) -> float:
+        confidence = 0.25
+        if face_detected:
+            confidence += 0.3
+        if eyes_detected:
+            confidence += 0.3
+        if gaze_direction != "desconocida":
+            confidence += 0.1
+        if fatigue_score >= 0.75:
+            confidence += 0.05
+        return round(min(1.0, confidence), 4)
