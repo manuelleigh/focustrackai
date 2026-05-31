@@ -66,7 +66,7 @@ class TemporalSmoother:
 
     def smooth_score(self, score: float) -> float:
         self._append(self.score_values, float(score))
-        return round(sum(self.score_values) / len(self.score_values) * 10, 2)
+        return round(sum(self.score_values) / max(1, len(self.score_values)), 2)
 
     def _append(self, values: deque, value: object) -> None:
         values.append(value)
