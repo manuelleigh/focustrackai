@@ -3,11 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import cv2
-import mediapipe as mp
 import numpy as np
 
 from focustrack.config import DetectionThresholds
 from focustrack.models import AttentionMetrics
+from focustrack.vision.mp_compat import HAS_MEDIAPIPE_SOLUTIONS, MP_SOLUTIONS
 
 try:
     import dlib
@@ -20,7 +20,6 @@ RIGHT_EYE = [362, 385, 387, 263, 373, 380]
 LEFT_IRIS = [468, 469, 470, 471, 472]
 RIGHT_IRIS = [473, 474, 475, 476, 477]
 FACE_BBOX_REFERENCE = [10, 152, 234, 454]
-HAS_MEDIAPIPE_SOLUTIONS = hasattr(mp, "solutions")
 FACE_CASCADE = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
@@ -36,8 +35,8 @@ class AttentionAnalyzer:
         self.thresholds = thresholds
         self.use_mediapipe = HAS_MEDIAPIPE_SOLUTIONS
         self.face_mesh = None
-        if self.use_mediapipe:
-            self.face_mesh = mp.solutions.face_mesh.FaceMesh(
+        if self.use_mediapipe and MP_SOLUTIONS is not None:
+            self.face_mesh = MP_SOLUTIONS.face_mesh.FaceMesh(
                 max_num_faces=1,
                 refine_landmarks=True,
                 min_detection_confidence=0.5,

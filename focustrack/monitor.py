@@ -41,7 +41,24 @@ class FocusTrackMonitor:
         self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.camera_height)
 
         if not self.capture.isOpened():
+            self.storage.append_audit_event(
+                "monitor_start_failed",
+                {"camera_index": self.camera_index},
+                session_id=self.session_id,
+            )
             raise RuntimeError("No se pudo abrir la camara seleccionada.")
+        self.storage.append_audit_event(
+            "monitor_started",
+            {"camera_index": self.camera_index},
+            session_id=self.session_id,
+        )
+        self.storage.upsert_session_note(
+            session_id=self.session_id,
+            name=f"Sesion {self.session_id}",
+            description="Sesion de monitoreo iniciada desde la app.",
+            approved_for_training=False,
+            status="activa",
+        )
 
     def stop(self) -> None:
         if self.capture is not None:
@@ -50,6 +67,14 @@ class FocusTrackMonitor:
         self.attention.close()
         self.posture.close()
         self.objects.close()
+        self.storage.upsert_session_note(
+            session_id=self.session_id,
+            name=f"Sesion {self.session_id}",
+            description="Sesion de monitoreo finalizada.",
+            approved_for_training=False,
+            status="finalizada",
+        )
+        self.storage.append_audit_event("monitor_stopped", session_id=self.session_id)
 
     def process_next(self) -> tuple[ProductivitySnapshot, np.ndarray]:
         self.start()
@@ -57,19 +82,32 @@ class FocusTrackMonitor:
 
         ok, frame = self.capture.read()
         if not ok or frame is None:
+            self.storage.append_audit_event(
+                "frame_capture_failed",
+                {"camera_index": self.camera_index},
+                session_id=self.session_id,
+            )
             raise RuntimeError("No se pudo capturar un frame desde la camara.")
 
         self.frame_number += 1
         frame = cv2.flip(frame, 1)
 
-        attention_metrics, attention_debug = self.attention.analyze(frame)
-        posture_metrics, posture_debug = self.posture.analyze(frame)
-        object_metrics, object_debug = self.objects.analyze(
-            frame,
-            face_bbox=attention_debug.get("face_bbox"),
-            frame_number=self.frame_number,
-        )
-        screen_metrics = self.screen.sample()
+        try:
+            attention_metrics, attention_debug = self.attention.analyze(frame)
+            posture_metrics, posture_debug = self.posture.analyze(frame)
+            object_metrics, object_debug = self.objects.analyze(
+                frame,
+                face_bbox=attention_debug.get("face_bbox"),
+                frame_number=self.frame_number,
+            )
+            screen_metrics = self.screen.sample()
+        except Exception as exc:
+            self.storage.append_audit_event(
+                "analysis_failed",
+                {"error": str(exc), "frame_number": self.frame_number},
+                session_id=self.session_id,
+            )
+            raise
 
         snapshot = evaluate_productivity(
             session_id=self.session_id,
@@ -80,6 +118,15 @@ class FocusTrackMonitor:
             weights=self.config.weights,
         )
         self.storage.append_snapshot(snapshot)
+        self.storage.append_audit_event(
+            "snapshot_recorded",
+            {
+                "frame_number": self.frame_number,
+                "productivity_score": snapshot.productivity_score,
+                "productivity_label": snapshot.productivity_label,
+            },
+            session_id=self.session_id,
+        )
 
         annotated = self._annotate_frame(
             frame=frame.copy(),
@@ -103,6 +150,11 @@ class FocusTrackMonitor:
         if face_bbox:
             x1, y1, x2, y2 = face_bbox
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 220, 255), 2)
+
+        posture_bbox = posture_debug.get("posture_bbox")
+        if posture_bbox:
+            x1, y1, x2, y2 = posture_bbox
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (120, 255, 120), 2)
 
         for (x1, y1, x2, y2), label, confidence in object_debug.get("yolo_boxes", []):
             cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 130, 80), 2)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 
 import cv2
 import pandas as pd
@@ -9,13 +10,6 @@ import streamlit as st
 from focustrack.config import FocusTrackConfig, OptionalModels, ProductivityWeights
 from focustrack.monitor import FocusTrackMonitor
 from focustrack.monitoring.storage import StorageManager
-
-
-st.set_page_config(
-    page_title="FocusTrack AI",
-    page_icon=":brain:",
-    layout="wide",
-)
 
 
 def _normalize_weights(raw_weights: dict[str, float]) -> ProductivityWeights:
@@ -30,30 +24,69 @@ def _normalize_weights(raw_weights: dict[str, float]) -> ProductivityWeights:
 
 def _build_config() -> tuple[FocusTrackConfig, int, float]:
     st.sidebar.header("Configuracion")
-    camera_index = int(st.sidebar.number_input("Indice de camara", min_value=0, max_value=5, value=0, step=1))
-    refresh_seconds = float(st.sidebar.slider("Intervalo de muestreo (seg)", min_value=0.5, max_value=3.0, value=1.0, step=0.5))
+    camera_index = int(
+        st.sidebar.number_input("Indice de camara", min_value=0, max_value=5, value=0, step=1)
+    )
+    refresh_seconds = float(
+        st.sidebar.slider(
+            "Intervalo de muestreo (seg)",
+            min_value=0.5,
+            max_value=3.0,
+            value=1.0,
+            step=0.5,
+        )
+    )
     enable_yolo = st.sidebar.checkbox("Activar YOLO si esta disponible", value=False)
     enable_dlib = st.sidebar.checkbox("Activar respaldo con dlib si esta disponible", value=False)
     capture_screen = st.sidebar.checkbox("Guardar capturas de pantalla", value=False)
 
     st.sidebar.subheader("Pesos del score")
     raw_weights = {
-        "attention": float(st.sidebar.slider("Atencion visual", min_value=5, max_value=70, value=40, step=5)),
-        "phone": float(st.sidebar.slider("Celular / objetos", min_value=5, max_value=50, value=20, step=5)),
-        "posture": float(st.sidebar.slider("Postura", min_value=5, max_value=40, value=15, step=5)),
-        "screen": float(st.sidebar.slider("Actividad en PC", min_value=5, max_value=60, value=25, step=5)),
+        "attention": float(
+            st.sidebar.slider("Atencion visual", min_value=5, max_value=70, value=40, step=5)
+        ),
+        "phone": float(
+            st.sidebar.slider("Celular / objetos", min_value=5, max_value=50, value=20, step=5)
+        ),
+        "posture": float(
+            st.sidebar.slider("Postura", min_value=5, max_value=40, value=15, step=5)
+        ),
+        "screen": float(
+            st.sidebar.slider("Actividad en PC", min_value=5, max_value=60, value=25, step=5)
+        ),
     }
     weights = _normalize_weights(raw_weights)
 
     config = FocusTrackConfig(
         weights=weights,
-        models=OptionalModels(
-            enable_yolo=enable_yolo,
-            enable_dlib=enable_dlib,
-        ),
+        models=OptionalModels(enable_yolo=enable_yolo, enable_dlib=enable_dlib),
         screen_capture_enabled=capture_screen,
     )
     return config, camera_index, refresh_seconds
+
+
+def _frame_to_rgb(frame):
+    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+
+def _ensure_session_state() -> None:
+    defaults = {
+        "monitor": None,
+        "monitor_running": False,
+        "last_frame": None,
+        "last_snapshot": None,
+        "active_session_id": "",
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+
+def _get_active_session_id() -> str:
+    monitor = st.session_state.get("monitor")
+    if monitor is not None:
+        return monitor.session_id
+    return str(st.session_state.get("active_session_id", ""))
 
 
 def _render_kpis(history: pd.DataFrame) -> None:
@@ -64,17 +97,16 @@ def _render_kpis(history: pd.DataFrame) -> None:
     last = history.iloc[-1]
     metric_1, metric_2, metric_3, metric_4 = st.columns(4)
     metric_1.metric("Score actual", f"{last['productivity_score']:.1f}")
-    metric_2.metric("Clasificacion", str(last["productivity_label"]))
-    metric_3.metric("Atencion", str(last["attention_state"]))
-    metric_4.metric("App activa", str(last["active_app"]))
+    metric_2.metric("Clasificacion", str(last.get("productivity_label", "")))
+    metric_3.metric("Atencion", str(last.get("attention_state", "")))
+    metric_4.metric("App activa", str(last.get("active_app", "")))
 
 
 def _render_history(history: pd.DataFrame, refresh_seconds: float) -> None:
     if history.empty:
         return
 
-    history = history.copy()
-    history = history.dropna(subset=["timestamp"])
+    history = history.copy().dropna(subset=["timestamp"])
     if history.empty:
         return
 
@@ -97,7 +129,6 @@ def _render_history(history: pd.DataFrame, refresh_seconds: float) -> None:
         )
         st.bar_chart(time_by_app)
 
-    st.subheader("Ultimos eventos")
     cols = [
         "timestamp",
         "productivity_score",
@@ -108,33 +139,189 @@ def _render_history(history: pd.DataFrame, refresh_seconds: float) -> None:
         "active_app",
         "screen_category",
     ]
-    st.dataframe(history.tail(20)[cols], use_container_width=True, hide_index=True)
+    visible_columns = [column for column in cols if column in history.columns]
+    st.subheader("Ultimos eventos")
+    st.dataframe(history.tail(20)[visible_columns], use_container_width=True, hide_index=True)
 
 
-def _frame_to_rgb(frame):
-    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+def _render_storage_health(storage: StorageManager) -> None:
+    st.subheader("Salud del storage")
+    health = storage.storage_health()
+    cols = st.columns(5)
+    cols[0].metric("Snapshots", str(health["snapshots"]))
+    cols[1].metric("Auditoria", str(health["audit_events"]))
+    cols[2].metric("Etiquetas", str(health["human_labels"]))
+    cols[3].metric("Notas", str(health["session_notes"]))
+    cols[4].metric("Alertas", str(health["alert_rules"]))
+    st.caption(f"SQLite: {health['sqlite_path']} | CSV: {health['csv_path']}")
 
 
-st.title("Sistema Inteligente de Monitoreo de Rendimiento y Distraccion Laboral")
-st.caption("Vision por computadora + reglas de IA para estimar atencion, fatiga, postura, distracciones y actividad en PC.")
+def _evaluate_alert(snapshot, rules_map: dict[str, dict[str, object]]) -> tuple[str, str]:
+    if snapshot is None:
+        return "info", "Aun no hay datos para evaluar alertas."
 
-config, camera_index, refresh_seconds = _build_config()
-storage = StorageManager(config.data_dir)
+    low_rule = rules_map.get("productivity_low")
+    medium_rule = rules_map.get("productivity_medium")
+    score = float(snapshot.productivity_score)
 
-if "monitor" not in st.session_state:
-    st.session_state.monitor = None
-if "monitor_running" not in st.session_state:
-    st.session_state.monitor_running = False
-if "last_frame" not in st.session_state:
-    st.session_state.last_frame = None
+    if low_rule and bool(low_rule.get("enabled")) and score < float(low_rule.get("threshold", 45.0)):
+        return str(low_rule.get("severity", "warning")), (
+            f"Score por debajo del umbral critico ({score:.1f})."
+        )
 
-controls_left, controls_right = st.columns([1, 3])
-with controls_left:
-    start_clicked = st.button("Iniciar monitoreo", use_container_width=True, type="primary", disabled=st.session_state.monitor_running)
-with controls_right:
-    stop_clicked = st.button("Detener monitoreo", use_container_width=True, disabled=not st.session_state.monitor_running)
+    if medium_rule and bool(medium_rule.get("enabled")) and score < float(medium_rule.get("threshold", 75.0)):
+        return str(medium_rule.get("severity", "info")), (
+            f"Score en zona de observacion ({score:.1f})."
+        )
 
-if start_clicked:
+    return "success", f"Score dentro del rango esperado ({score:.1f})."
+
+
+def _render_alert_rules(storage: StorageManager) -> None:
+    st.subheader("Reglas de alerta")
+    rules = storage.load_alert_rules()
+    if rules.empty:
+        st.info("No hay reglas cargadas.")
+        return
+
+    severity_labels = {
+        "info": "Informativa",
+        "warning": "Advertencia",
+        "error": "Critica",
+    }
+    severity_reverse = {label: key for key, label in severity_labels.items()}
+
+    with st.form("alert_rules_form"):
+        for row in rules.to_dict(orient="records"):
+            rule_key = str(row["rule_key"])
+            st.markdown(f"**{rule_key}**")
+            enabled = st.checkbox(
+                f"Habilitada: {rule_key}",
+                value=bool(row["enabled"]),
+                key=f"enabled_{rule_key}",
+            )
+            threshold = st.number_input(
+                f"Umbral: {rule_key}",
+                value=float(row["threshold"]),
+                step=1.0,
+                key=f"threshold_{rule_key}",
+            )
+            window_seconds = st.number_input(
+                f"Ventana (seg): {rule_key}",
+                value=float(row["window_seconds"]),
+                step=1.0,
+                min_value=0.0,
+                key=f"window_{rule_key}",
+            )
+            severity = st.selectbox(
+                f"Severidad: {rule_key}",
+                options=list(severity_labels.values()),
+                index=list(severity_labels.keys()).index(str(row["severity"])),
+                key=f"severity_{rule_key}",
+            )
+            st.divider()
+
+        submitted = st.form_submit_button("Guardar reglas")
+
+    if submitted:
+        for row in rules.to_dict(orient="records"):
+            rule_key = str(row["rule_key"])
+            storage.upsert_alert_rule(
+                rule_key=rule_key,
+                enabled=bool(st.session_state[f"enabled_{rule_key}"]),
+                threshold=float(st.session_state[f"threshold_{rule_key}"]),
+                window_seconds=float(st.session_state[f"window_{rule_key}"]),
+                severity=str(severity_reverse[st.session_state[f"severity_{rule_key}"]]),
+            )
+        st.success("Reglas de alerta actualizadas.")
+
+
+def _render_session_notes(storage: StorageManager, session_id: str) -> None:
+    st.subheader("Notas de sesion")
+    notes = storage.load_session_notes(session_id=session_id) if session_id else pd.DataFrame()
+    current = notes.iloc[0].to_dict() if not notes.empty else {}
+
+    with st.form("session_note_form"):
+        name = st.text_input(
+            "Nombre de la sesion",
+            value=str(current.get("name", f"Sesion {session_id}" if session_id else "")),
+        )
+        description = st.text_area(
+            "Descripcion",
+            value=str(current.get("description", "")),
+            height=100,
+        )
+        approved = st.checkbox(
+            "Aprobada para entrenamiento",
+            value=bool(current.get("approved_for_training", False)),
+        )
+        status_options = ["registrada", "activa", "en_revision", "finalizada"]
+        current_status = str(current.get("status", "registrada"))
+        status = st.selectbox(
+            "Estado",
+            options=status_options,
+            index=status_options.index(current_status) if current_status in status_options else 0,
+        )
+        submitted = st.form_submit_button("Guardar nota")
+
+    if submitted:
+        if not session_id:
+            st.error("No hay una sesion activa o seleccionada para guardar la nota.")
+            return
+        storage.upsert_session_note(
+            session_id=session_id,
+            name=name,
+            description=description,
+            approved_for_training=approved,
+            status=status,
+        )
+        st.success("Nota de sesion actualizada.")
+
+    if not notes.empty:
+        st.dataframe(notes, use_container_width=True, hide_index=True)
+
+
+def _render_human_labels(storage: StorageManager, session_id: str) -> None:
+    st.subheader("Etiquetas humanas")
+    labels = storage.load_human_labels(session_id=session_id) if session_id else pd.DataFrame()
+
+    with st.form("human_labels_form"):
+        label = st.selectbox(
+            "Etiqueta",
+            options=["Productivo", "Regular", "Distraido", "Revisar"],
+        )
+        start_value = st.text_input("Inicio (ISO opcional)", value=datetime.now().isoformat(timespec="seconds"))
+        end_value = st.text_input("Fin (ISO opcional)", value="")
+        notes = st.text_area("Notas", value="", height=80)
+        submitted = st.form_submit_button("Registrar etiqueta")
+
+    if submitted:
+        if not session_id:
+            st.error("No hay una sesion activa o seleccionada para etiquetar.")
+            return
+        storage.append_human_label(
+            session_id=session_id,
+            label=label,
+            start_time=start_value or None,
+            end_time=end_value or None,
+            notes=notes,
+        )
+        st.success("Etiqueta humana registrada.")
+
+    if not labels.empty:
+        st.dataframe(labels, use_container_width=True, hide_index=True)
+
+
+def _render_audit_events(storage: StorageManager) -> None:
+    st.subheader("Auditoria reciente")
+    events = storage.load_audit_events(limit=50)
+    if events.empty:
+        st.info("Aun no hay eventos de auditoria.")
+        return
+    st.dataframe(events, use_container_width=True, hide_index=True)
+
+
+def _handle_monitor_start(config: FocusTrackConfig, camera_index: int) -> None:
     try:
         if st.session_state.monitor is not None:
             st.session_state.monitor.stop()
@@ -142,63 +329,113 @@ if start_clicked:
         monitor.start()
         st.session_state.monitor = monitor
         st.session_state.monitor_running = True
+        st.session_state.active_session_id = monitor.session_id
     except Exception as exc:
         st.error(f"No fue posible iniciar el monitoreo: {exc}")
         st.session_state.monitor = None
         st.session_state.monitor_running = False
 
-if stop_clicked:
+
+def _handle_monitor_stop() -> None:
     if st.session_state.monitor is not None:
         st.session_state.monitor.stop()
+        st.session_state.active_session_id = st.session_state.monitor.session_id
     st.session_state.monitor = None
     st.session_state.monitor_running = False
 
-status_col, info_col = st.columns([1.2, 2])
-with status_col:
-    history = storage.load_history(limit=200)
-    _render_kpis(history)
-with info_col:
-    st.markdown(
-        """
-        **Que detecta esta demo**
 
-        - Rostro, ojos, EAR y mirada con `OpenCV + MediaPipe`, con soporte opcional para `dlib`.
-        - Postura corporal usando `MediaPipe Pose`.
-        - Celular y objetos si `YOLO` esta disponible; si no, usa heuristicas de manos y ausencia.
-        - Aplicacion activa y clasificacion trabajo vs distraccion en el escritorio.
-        """
+def main() -> None:
+    st.set_page_config(page_title="FocusTrack AI", page_icon=":brain:", layout="wide")
+    st.title("Sistema Inteligente de Monitoreo de Rendimiento y Distraccion Laboral")
+    st.caption(
+        "Vision por computadora + reglas persistidas para estimar atencion, fatiga, postura, "
+        "distracciones y actividad en PC."
     )
 
-frame_placeholder = st.empty()
-alert_placeholder = st.empty()
+    config, camera_index, refresh_seconds = _build_config()
+    storage = StorageManager(config.data_dir)
+    _ensure_session_state()
 
-if st.session_state.monitor_running and st.session_state.monitor is not None:
-    try:
-        snapshot, frame = st.session_state.monitor.process_next()
-        st.session_state.last_frame = frame
-        history = storage.load_history(limit=200)
+    controls_left, controls_right = st.columns([1, 3])
+    with controls_left:
+        start_clicked = st.button(
+            "Iniciar monitoreo",
+            use_container_width=True,
+            type="primary",
+            disabled=st.session_state.monitor_running,
+        )
+    with controls_right:
+        stop_clicked = st.button(
+            "Detener monitoreo",
+            use_container_width=True,
+            disabled=not st.session_state.monitor_running,
+        )
 
-        if snapshot.productivity_label == "Distraido":
-            alert_placeholder.error("Nivel de distraccion alto. Conviene revisar la causa o activar alertas.")
-        elif snapshot.productivity_label == "Regular":
-            alert_placeholder.warning("Atencion irregular detectada. Revisa postura, mirada o actividad en pantalla.")
-        else:
-            alert_placeholder.success("Comportamiento dentro del rango productivo.")
-    except Exception as exc:
-        alert_placeholder.error(f"Error de monitoreo: {exc}")
-        if st.session_state.monitor is not None:
-            st.session_state.monitor.stop()
-        st.session_state.monitor = None
-        st.session_state.monitor_running = False
+    if start_clicked:
+        _handle_monitor_start(config, camera_index)
+    if stop_clicked:
+        _handle_monitor_stop()
 
-if st.session_state.last_frame is not None:
-    frame_placeholder.image(_frame_to_rgb(st.session_state.last_frame), caption="Vista analizada", use_container_width=True)
-else:
-    frame_placeholder.info("Cuando inicies el monitoreo se mostrara aqui el frame anotado en tiempo real.")
+    history = storage.load_history(limit=400)
+    _render_kpis(history)
 
-history = storage.load_history(limit=400)
-_render_history(history, refresh_seconds)
+    rules_map = storage.get_alert_rules_map()
+    frame_placeholder = st.empty()
+    alert_placeholder = st.empty()
 
-if st.session_state.monitor_running:
-    time.sleep(refresh_seconds)
-    st.rerun()
+    if st.session_state.monitor_running and st.session_state.monitor is not None:
+        try:
+            snapshot, frame = st.session_state.monitor.process_next()
+            st.session_state.last_frame = frame
+            st.session_state.last_snapshot = snapshot
+            st.session_state.active_session_id = st.session_state.monitor.session_id
+            history = storage.load_history(limit=400)
+        except Exception as exc:
+            alert_placeholder.error(f"Error de monitoreo: {exc}")
+            _handle_monitor_stop()
+
+    severity, alert_message = _evaluate_alert(st.session_state.last_snapshot, rules_map)
+    if severity == "error":
+        alert_placeholder.error(alert_message)
+    elif severity == "warning":
+        alert_placeholder.warning(alert_message)
+    elif severity == "info":
+        alert_placeholder.info(alert_message)
+    else:
+        alert_placeholder.success(alert_message)
+
+    if st.session_state.last_frame is not None:
+        frame_placeholder.image(
+            _frame_to_rgb(st.session_state.last_frame),
+            caption="Vista analizada",
+            use_container_width=True,
+        )
+    else:
+        frame_placeholder.info("Cuando inicies el monitoreo se mostrara aqui el frame anotado en tiempo real.")
+
+    _render_history(history, refresh_seconds)
+    _render_storage_health(storage)
+
+    session_id = _get_active_session_id()
+    ops_tab, rules_tab, notes_tab, labels_tab, audit_tab = st.tabs(
+        ["Operacion", "Alertas", "Notas", "Etiquetas", "Auditoria"]
+    )
+    with ops_tab:
+        st.write(f"Sesion activa: `{session_id or 'sin_sesion'}`")
+        st.write("El historial y las alertas se leen desde SQLite; el CSV se mantiene como respaldo.")
+    with rules_tab:
+        _render_alert_rules(storage)
+    with notes_tab:
+        _render_session_notes(storage, session_id)
+    with labels_tab:
+        _render_human_labels(storage, session_id)
+    with audit_tab:
+        _render_audit_events(storage)
+
+    if st.session_state.monitor_running:
+        time.sleep(refresh_seconds)
+        st.rerun()
+
+
+if __name__ == "__main__":
+    main()

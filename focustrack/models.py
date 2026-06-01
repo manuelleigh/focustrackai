@@ -27,6 +27,7 @@ class PostureMetrics:
     shoulder_tilt: float | None = None
     torso_lean: float | None = None
     head_offset: float | None = None
+    confidence: float = 0.0
 
 
 @dataclass
@@ -36,6 +37,7 @@ class ObjectMetrics:
     person_present: bool = False
     object_state: str = "sin_objetos"
     backend: str = "heuristico"
+    confidence: float = 0.0
 
 
 @dataclass
@@ -100,10 +102,12 @@ class ProductivitySnapshot:
                 if self.posture.head_offset is not None
                 else None
             ),
+            "posture_confidence": round(self.posture.confidence, 4),
             "phone_detected": self.objects.phone_detected,
             "hand_on_face": self.objects.hand_on_face,
             "person_present": self.objects.person_present,
             "object_state": self.objects.object_state,
+            "object_confidence": round(self.objects.confidence, 4),
             "active_app": self.screen.active_app,
             "window_title": self.screen.window_title,
             "screen_category": self.screen.category,

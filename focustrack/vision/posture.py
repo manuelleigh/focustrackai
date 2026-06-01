@@ -8,10 +8,19 @@ from focustrack.vision.mp_compat import HAS_MEDIAPIPE_SOLUTIONS, MP_SOLUTIONS
 
 
 class PostureAnalyzer:
+    OPENCV_FACE_CENTER_X = 0.5
+    OPENCV_FACE_CENTER_Y = 0.35
+    OPENCV_FACE_RATIO_TARGET = 0.28
+    OPENCV_HORIZONTAL_WEIGHT = 140.0
+    OPENCV_VERTICAL_WEIGHT = 100.0
+    OPENCV_DISTANCE_WEIGHT = 180.0
+
     def __init__(self, thresholds: DetectionThresholds):
         self.thresholds = thresholds
         self.pose = None
-        self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        self.face_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        )
 
         if HAS_MEDIAPIPE_SOLUTIONS:
             self.pose = MP_SOLUTIONS.pose.Pose(
@@ -30,7 +39,11 @@ class PostureAnalyzer:
         debug: dict[str, object] = {"pose_landmarks": None}
 
         if not result.pose_landmarks:
-            return PostureMetrics(posture_state="sin_datos", posture_score=50.0), debug
+            return PostureMetrics(
+                posture_state="sin_datos",
+                posture_score=50.0,
+                confidence=0.2,
+            ), debug
 
         debug["pose_landmarks"] = result.pose_landmarks
         landmarks = result.pose_landmarks.landmark
@@ -74,7 +87,12 @@ class PostureAnalyzer:
 
     def _analyze_with_opencv(self, frame) -> tuple[PostureMetrics, dict[str, object]]:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(80, 80))
+        faces = self.face_cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(80, 80),
+        )
         debug: dict[str, object] = {"pose_landmarks": None, "posture_bbox": None}
 
         if len(faces) == 0:
@@ -86,11 +104,20 @@ class PostureAnalyzer:
         frame_height, frame_width = frame.shape[:2]
         face_center_x = (x + (w / 2.0)) / max(frame_width, 1)
         face_center_y = (y + (h / 2.0)) / max(frame_height, 1)
-        head_offset = abs(face_center_x - 0.5)
-        vertical_offset = abs(face_center_y - 0.35)
+        head_offset = abs(face_center_x - self.OPENCV_FACE_CENTER_X)
+        vertical_offset = abs(face_center_y - self.OPENCV_FACE_CENTER_Y)
         face_ratio = h / max(frame_height, 1)
-        distance_penalty = abs(face_ratio - 0.28) * 180.0
-        score = max(0.0, 100.0 - (head_offset * 140.0) - (vertical_offset * 100.0) - distance_penalty)
+        distance_penalty = (
+            abs(face_ratio - self.OPENCV_FACE_RATIO_TARGET)
+            * self.OPENCV_DISTANCE_WEIGHT
+        )
+        score = max(
+            0.0,
+            100.0
+            - (head_offset * self.OPENCV_HORIZONTAL_WEIGHT)
+            - (vertical_offset * self.OPENCV_VERTICAL_WEIGHT)
+            - distance_penalty,
+        )
 
         if score >= 75.0:
             posture_state = "correcta"
