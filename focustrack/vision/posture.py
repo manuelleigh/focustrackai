@@ -18,6 +18,9 @@ class PostureAnalyzer:
     def __init__(self, thresholds: DetectionThresholds):
         self.thresholds = thresholds
         self.pose = None
+        self.last_posture_candidate = "sin_datos"
+        self.stable_posture_state = "sin_datos"
+        self.posture_state_frames = 0
         self.face_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
@@ -53,6 +56,15 @@ class PostureAnalyzer:
         left_hip = landmarks[MP_SOLUTIONS.pose.PoseLandmark.LEFT_HIP.value]
         right_hip = landmarks[MP_SOLUTIONS.pose.PoseLandmark.RIGHT_HIP.value]
 
+        if not self._has_required_visibility(
+            [nose, left_shoulder, right_shoulder, left_hip, right_hip]
+        ):
+            return PostureMetrics(
+                posture_state=self._stable_posture("sin_datos"),
+                posture_score=50.0,
+                confidence=0.2,
+            ), debug
+
         shoulder_tilt = abs(left_shoulder.y - right_shoulder.y)
         torso_center_x = (left_shoulder.x + right_shoulder.x) / 2.0
         hip_center_x = (left_hip.x + right_hip.x) / 2.0
@@ -72,7 +84,7 @@ class PostureAnalyzer:
             posture_state = "encorvada"
 
         metrics = PostureMetrics(
-            posture_state=posture_state,
+            posture_state=self._stable_posture(posture_state),
             posture_score=score,
             shoulder_tilt=shoulder_tilt,
             torso_lean=torso_lean,
@@ -127,10 +139,28 @@ class PostureAnalyzer:
             posture_state = "encorvada"
 
         return PostureMetrics(
-            posture_state=posture_state,
+            posture_state=self._stable_posture(posture_state),
             posture_score=score,
             shoulder_tilt=None,
             torso_lean=vertical_offset,
             head_offset=head_offset,
             confidence=round(min(0.75, max(0.35, score / 100.0)), 4),
         ), debug
+
+    def _has_required_visibility(self, landmarks: list[object]) -> bool:
+        min_visibility = self.thresholds.posture_visibility_min
+        return all(getattr(landmark, "visibility", 1.0) >= min_visibility for landmark in landmarks)
+
+    def _stable_posture(self, candidate_state: str) -> str:
+        if candidate_state == self.last_posture_candidate:
+            self.posture_state_frames += 1
+        else:
+            self.last_posture_candidate = candidate_state
+            self.posture_state_frames = 1
+
+        if (
+            self.posture_state_frames
+            >= self.thresholds.posture_state_consensus_frames
+        ):
+            self.stable_posture_state = candidate_state
+        return self.stable_posture_state

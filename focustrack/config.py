@@ -21,10 +21,21 @@ class DetectionThresholds:
     gaze_center_min: float = 0.35
     gaze_center_max: float = 0.65
     fatigue_frame_window: int = 8
+    face_min_width_ratio: float = 0.10
+    face_min_height_ratio: float = 0.12
+    face_presence_consensus_frames: int = 2
+    attention_state_consensus_frames: int = 2
     shoulder_tilt_max: float = 0.08
     torso_lean_max: float = 0.12
     head_offset_max: float = 0.14
+    posture_visibility_min: float = 0.55
+    posture_state_consensus_frames: int = 2
     hand_face_distance: float = 0.12
+    hand_face_min_points: int = 3
+    object_presence_consensus_frames: int = 2
+    yolo_confidence_threshold: float = 0.35
+    yolo_phone_confidence_threshold: float = 0.45
+    yolo_person_confidence_threshold: float = 0.40
 
 
 @dataclass
