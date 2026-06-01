@@ -4,6 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pandas as pd
+
 from focustrack.models import (
     AttentionMetrics,
     ObjectMetrics,
@@ -270,6 +272,42 @@ class StorageTests(unittest.TestCase):
                 window_seconds=0.0,
                 severity="critico",
             )
+
+    def test_export_history_csv_respects_session_filter(self) -> None:
+        self.storage.append_snapshot(
+            ProductivitySnapshot(
+                session_id="session-export-a",
+                attention=AttentionMetrics(attention_state="atento"),
+                posture=PostureMetrics(posture_state="correcta", posture_score=90.0, confidence=0.9),
+                objects=ObjectMetrics(person_present=True, confidence=0.5),
+                screen=ScreenMetrics(active_app="Code", category="trabajo", productivity_score=90.0),
+                productivity_score=90.0,
+                productivity_label="Productivo",
+            )
+        )
+        self.storage.append_snapshot(
+            ProductivitySnapshot(
+                session_id="session-export-b",
+                attention=AttentionMetrics(attention_state="desviado"),
+                posture=PostureMetrics(posture_state="mejorable", posture_score=55.0, confidence=0.5),
+                objects=ObjectMetrics(person_present=True, confidence=0.4),
+                screen=ScreenMetrics(active_app="Browser", category="neutral", productivity_score=55.0),
+                productivity_score=55.0,
+                productivity_label="Regular",
+            )
+        )
+
+        export_path = self.data_dir / "exports" / "session-export-a.csv"
+        result_path = self.storage.export_history_csv(
+            destination=export_path,
+            session_id="session-export-a",
+            limit=100,
+        )
+
+        exported = pd.read_csv(result_path)
+        self.assertTrue(result_path.exists())
+        self.assertEqual(len(exported), 1)
+        self.assertEqual(exported.iloc[0]["session_id"], "session-export-a")
 
 
 if __name__ == "__main__":

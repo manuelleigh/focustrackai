@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
+from pathlib import Path
 
 import cv2
 import pandas as pd
@@ -265,6 +266,32 @@ def _render_storage_health(storage: StorageManager) -> None:
     cols[3].metric("Notas", str(health["session_notes"]))
     cols[4].metric("Alertas", str(health["alert_rules"]))
     st.caption(f"SQLite: {health['sqlite_path']} | CSV: {health['csv_path']}")
+
+
+def _build_export_path(storage: StorageManager, session_id: str) -> Path:
+    export_name = f"historial_{session_id or 'global'}.csv"
+    return storage.data_dir / "exports" / export_name
+
+
+def _render_history_export(storage: StorageManager, session_id: str) -> None:
+    st.subheader("Exportacion")
+    export_limit = int(
+        st.number_input(
+            "Maximo de filas para exportar",
+            min_value=1,
+            max_value=5000,
+            value=500,
+            step=50,
+        )
+    )
+    if st.button("Generar exportacion CSV", use_container_width=True):
+        export_path = _build_export_path(storage, session_id)
+        storage.export_history_csv(
+            destination=export_path,
+            session_id=session_id or None,
+            limit=export_limit,
+        )
+        st.success(f"Exportacion generada en: {export_path}")
 
 
 def _render_session_summary(selected_session_id: str, sessions: pd.DataFrame) -> None:
@@ -710,6 +737,7 @@ def main() -> None:
     with ops_tab:
         st.write(f"Sesion activa: `{session_id or 'sin_sesion'}`")
         st.write("El historial y las alertas se leen desde SQLite; el CSV se mantiene como respaldo.")
+        _render_history_export(storage, session_id)
     with rules_tab:
         _render_alert_rules(storage)
     with notes_tab:

@@ -24,6 +24,7 @@ Sistema de monitoreo de atencion, distraccion y productividad laboral usando vis
    - Frame anotado en tiempo real.
    - KPIs, graficas de score e historial por aplicacion.
    - Paneles para salud del storage, auditoria, reglas, notas y etiquetas humanas.
+   - Exportacion de historial filtrado por sesion a CSV de analisis.
 
 ## Instalacion
 

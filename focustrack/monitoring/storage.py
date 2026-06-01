@@ -156,6 +156,17 @@ class StorageManager:
             "dominant_productivity_label": dominant_productivity_label,
         }
 
+    def export_history_csv(
+        self,
+        destination: Path,
+        session_id: str | None = None,
+        limit: int | None = None,
+    ) -> Path:
+        history = self.load_history(limit=limit, session_id=session_id)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        history.to_csv(destination, index=False, encoding="utf-8")
+        return destination
+
     def append_audit_event(
         self,
         event_type: str,
