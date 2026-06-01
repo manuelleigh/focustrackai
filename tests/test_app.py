@@ -9,6 +9,7 @@ from app import (
     _evaluate_alert,
     _register_human_label,
     _rule_label,
+    _save_alert_rules,
     _save_session_note,
 )
 from focustrack.models import (
@@ -114,6 +115,23 @@ class AppAlertTests(unittest.TestCase):
             self.assertEqual(len(labels), 1)
             self.assertEqual(labels.iloc[0]["label"], "Productivo")
             self.assertEqual(events.iloc[-1]["event_type"], "human_label_registered")
+
+    def test_save_alert_rules_validates_before_persisting(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage = StorageManager(Path(temp_dir))
+            with self.assertRaises(ValueError):
+                _save_alert_rules(
+                    storage,
+                    [
+                        {
+                            "rule_key": "productivity_low",
+                            "enabled": True,
+                            "threshold": 101.0,
+                            "window_seconds": 0.0,
+                            "severity": "warning",
+                        }
+                    ],
+                )
 
 
 if __name__ == "__main__":

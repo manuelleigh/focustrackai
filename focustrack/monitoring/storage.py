@@ -28,6 +28,8 @@ DEFAULT_ALERT_RULES: tuple[dict[str, Any], ...] = (
     },
 )
 
+VALID_ALERT_SEVERITIES = {"info", "warning", "error"}
+
 
 class StorageManager:
     def __init__(self, data_dir: Path):
@@ -347,6 +349,11 @@ class StorageManager:
         window_seconds: float,
         severity: str,
     ) -> None:
+        normalized_threshold, normalized_window, normalized_severity = self.validate_alert_rule(
+            threshold=threshold,
+            window_seconds=window_seconds,
+            severity=severity,
+        )
         with self._connect() as connection:
             connection.execute(
                 """
@@ -362,9 +369,9 @@ class StorageManager:
                 (
                     rule_key,
                     int(enabled),
-                    threshold,
-                    window_seconds,
-                    severity,
+                    normalized_threshold,
+                    normalized_window,
+                    normalized_severity,
                     datetime.now().isoformat(),
                 ),
             )
@@ -417,6 +424,25 @@ class StorageManager:
             rule_key = str(row.pop("rule_key"))
             rules[rule_key] = row
         return rules
+
+    def validate_alert_rule(
+        self,
+        threshold: float,
+        window_seconds: float,
+        severity: str,
+    ) -> tuple[float, float, str]:
+        normalized_threshold = float(threshold)
+        normalized_window = float(window_seconds)
+        normalized_severity = str(severity).strip().lower()
+
+        if not 0.0 <= normalized_threshold <= 100.0:
+            raise ValueError("El umbral debe estar entre 0 y 100.")
+        if normalized_window < 0.0:
+            raise ValueError("La ventana de tiempo no puede ser negativa.")
+        if normalized_severity not in VALID_ALERT_SEVERITIES:
+            raise ValueError("La severidad debe ser info, warning o error.")
+
+        return normalized_threshold, normalized_window, normalized_severity
 
     def _append_snapshot_csv(self, row: dict[str, object]) -> None:
         write_header = not self.csv_path.exists()

@@ -150,6 +150,22 @@ def _register_human_label(
     )
 
 
+def _save_alert_rules(storage: StorageManager, rules: list[dict[str, object]]) -> None:
+    for rule in rules:
+        threshold, window_seconds, severity = storage.validate_alert_rule(
+            threshold=float(rule["threshold"]),
+            window_seconds=float(rule["window_seconds"]),
+            severity=str(rule["severity"]),
+        )
+        storage.upsert_alert_rule(
+            rule_key=str(rule["rule_key"]),
+            enabled=bool(rule["enabled"]),
+            threshold=threshold,
+            window_seconds=window_seconds,
+            severity=severity,
+        )
+
+
 def _status_label(status: str) -> str:
     labels = {
         "registrada": "Registrada",
@@ -465,15 +481,23 @@ def _render_alert_rules(storage: StorageManager) -> None:
         submitted = st.form_submit_button("Guardar reglas")
 
     if submitted:
+        payload = []
         for row in rules.to_dict(orient="records"):
             rule_key = str(row["rule_key"])
-            storage.upsert_alert_rule(
-                rule_key=rule_key,
-                enabled=bool(st.session_state[f"enabled_{rule_key}"]),
-                threshold=float(st.session_state[f"threshold_{rule_key}"]),
-                window_seconds=float(st.session_state[f"window_{rule_key}"]),
-                severity=str(severity_reverse[st.session_state[f"severity_{rule_key}"]]),
+            payload.append(
+                {
+                    "rule_key": rule_key,
+                    "enabled": bool(st.session_state[f"enabled_{rule_key}"]),
+                    "threshold": float(st.session_state[f"threshold_{rule_key}"]),
+                    "window_seconds": float(st.session_state[f"window_{rule_key}"]),
+                    "severity": str(severity_reverse[st.session_state[f"severity_{rule_key}"]]),
+                }
             )
+        try:
+            _save_alert_rules(storage, payload)
+        except ValueError as exc:
+            st.error(str(exc))
+            return
         st.success("Reglas de alerta actualizadas.")
 
 

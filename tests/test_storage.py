@@ -245,6 +245,32 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(analytics["productivity_breakdown"]["Productivo"], 2)
         self.assertEqual(analytics["attention_breakdown"]["atento"], 2)
 
+    def test_upsert_alert_rule_rejects_invalid_values(self) -> None:
+        with self.assertRaises(ValueError):
+            self.storage.upsert_alert_rule(
+                rule_key="invalid-threshold",
+                enabled=True,
+                threshold=120.0,
+                window_seconds=0.0,
+                severity="warning",
+            )
+        with self.assertRaises(ValueError):
+            self.storage.upsert_alert_rule(
+                rule_key="invalid-window",
+                enabled=True,
+                threshold=50.0,
+                window_seconds=-1.0,
+                severity="warning",
+            )
+        with self.assertRaises(ValueError):
+            self.storage.upsert_alert_rule(
+                rule_key="invalid-severity",
+                enabled=True,
+                threshold=50.0,
+                window_seconds=0.0,
+                severity="critico",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
