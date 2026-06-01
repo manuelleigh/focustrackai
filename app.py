@@ -76,6 +76,7 @@ def _ensure_session_state() -> None:
         "last_frame": None,
         "last_snapshot": None,
         "active_session_id": "",
+        "last_alert_signature": "",
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -221,25 +222,92 @@ def _render_session_summary(selected_session_id: str, sessions: pd.DataFrame) ->
     )
 
 
-def _evaluate_alert(snapshot, rules_map: dict[str, dict[str, object]]) -> tuple[str, str]:
+def _rule_label(rule_key: str) -> str:
+    labels = {
+        "productivity_low": "Productividad baja",
+        "productivity_medium": "Productividad en observacion",
+        "success": "Sin alerta",
+    }
+    return labels.get(rule_key, rule_key)
+
+
+def _evaluate_alert(snapshot, rules_map: dict[str, dict[str, object]]) -> dict[str, object]:
     if snapshot is None:
-        return "info", "Aun no hay datos para evaluar alertas."
+        return {
+            "severity": "info",
+            "message": "Aun no hay datos para evaluar alertas.",
+            "rule_key": "success",
+            "score": None,
+        }
 
     low_rule = rules_map.get("productivity_low")
     medium_rule = rules_map.get("productivity_medium")
     score = float(snapshot.productivity_score)
 
     if low_rule and bool(low_rule.get("enabled")) and score < float(low_rule.get("threshold", 45.0)):
-        return str(low_rule.get("severity", "warning")), (
-            f"Score por debajo del umbral critico ({score:.1f})."
-        )
+        return {
+            "severity": str(low_rule.get("severity", "warning")),
+            "message": f"Score por debajo del umbral critico ({score:.1f}).",
+            "rule_key": "productivity_low",
+            "score": score,
+        }
 
     if medium_rule and bool(medium_rule.get("enabled")) and score < float(medium_rule.get("threshold", 75.0)):
-        return str(medium_rule.get("severity", "info")), (
-            f"Score en zona de observacion ({score:.1f})."
-        )
+        return {
+            "severity": str(medium_rule.get("severity", "info")),
+            "message": f"Score en zona de observacion ({score:.1f}).",
+            "rule_key": "productivity_medium",
+            "score": score,
+        }
 
-    return "success", f"Score dentro del rango esperado ({score:.1f})."
+    return {
+        "severity": "success",
+        "message": f"Score dentro del rango esperado ({score:.1f}).",
+        "rule_key": "success",
+        "score": score,
+    }
+
+
+def _build_alert_signature(alert_result: dict[str, object], session_id: str) -> str:
+    return (
+        f"{session_id}|{alert_result['rule_key']}|"
+        f"{alert_result['severity']}|{alert_result['score']}"
+    )
+
+
+def _register_alert_event_if_needed(
+    storage: StorageManager,
+    session_id: str,
+    alert_result: dict[str, object],
+) -> None:
+    if not session_id or alert_result["rule_key"] == "success":
+        return
+
+    signature = _build_alert_signature(alert_result, session_id)
+    if st.session_state.get("last_alert_signature") == signature:
+        return
+
+    storage.append_audit_event(
+        "alert_triggered",
+        {
+            "rule_key": alert_result["rule_key"],
+            "rule_label": _rule_label(str(alert_result["rule_key"])),
+            "severity": alert_result["severity"],
+            "score": alert_result["score"],
+            "message": alert_result["message"],
+        },
+        session_id=session_id,
+    )
+    st.session_state["last_alert_signature"] = signature
+
+
+def _render_alert_status(alert_result: dict[str, object]) -> None:
+    st.subheader("Estado de alerta")
+    cols = st.columns(3)
+    cols[0].metric("Regla activa", _rule_label(str(alert_result["rule_key"])))
+    cols[1].metric("Severidad", str(alert_result["severity"]).capitalize())
+    score_value = alert_result["score"]
+    cols[2].metric("Score evaluado", f"{float(score_value):.1f}" if score_value is not None else "s/d")
 
 
 def _render_alert_rules(storage: StorageManager) -> None:
@@ -474,15 +542,17 @@ def main() -> None:
             alert_placeholder.error(f"Error de monitoreo: {exc}")
             _handle_monitor_stop()
 
-    severity, alert_message = _evaluate_alert(st.session_state.last_snapshot, rules_map)
-    if severity == "error":
-        alert_placeholder.error(alert_message)
-    elif severity == "warning":
-        alert_placeholder.warning(alert_message)
-    elif severity == "info":
-        alert_placeholder.info(alert_message)
+    active_session_id = _get_active_session_id() or selected_session_id
+    alert_result = _evaluate_alert(st.session_state.last_snapshot, rules_map)
+    _register_alert_event_if_needed(storage, active_session_id, alert_result)
+    if alert_result["severity"] == "error":
+        alert_placeholder.error(str(alert_result["message"]))
+    elif alert_result["severity"] == "warning":
+        alert_placeholder.warning(str(alert_result["message"]))
+    elif alert_result["severity"] == "info":
+        alert_placeholder.info(str(alert_result["message"]))
     else:
-        alert_placeholder.success(alert_message)
+        alert_placeholder.success(str(alert_result["message"]))
 
     if st.session_state.last_frame is not None:
         frame_placeholder.image(
@@ -496,8 +566,9 @@ def main() -> None:
     _render_history(history, refresh_seconds, selected_session_id)
     _render_storage_health(storage)
     _render_session_summary(selected_session_id or _get_active_session_id(), sessions)
+    _render_alert_status(alert_result)
 
-    session_id = _get_active_session_id() or selected_session_id
+    session_id = active_session_id
     ops_tab, rules_tab, notes_tab, labels_tab, audit_tab = st.tabs(
         ["Operacion", "Alertas", "Notas", "Etiquetas", "Auditoria"]
     )
