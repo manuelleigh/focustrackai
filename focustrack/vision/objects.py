@@ -5,6 +5,7 @@ import cv2
 from focustrack.config import DetectionThresholds, OptionalModels
 from focustrack.models import ObjectMetrics
 from focustrack.vision.mp_compat import HAS_MEDIAPIPE_SOLUTIONS, MP_SOLUTIONS
+from focustrack.vision.temporal import TemporalConsensus
 
 try:
     from ultralytics import YOLO
@@ -19,6 +20,18 @@ class ObjectAnalyzer:
         self.hands = None
         self.yolo_model = None
         self.last_boxes: list[tuple[tuple[int, int, int, int], str, float]] = []
+        self.phone_consensus = TemporalConsensus[bool](
+            window_size=self.thresholds.temporal_consensus_window,
+            min_votes=self.thresholds.object_presence_consensus_frames,
+        )
+        self.hand_face_consensus = TemporalConsensus[bool](
+            window_size=self.thresholds.temporal_consensus_window,
+            min_votes=self.thresholds.object_presence_consensus_frames,
+        )
+        self.person_consensus = TemporalConsensus[bool](
+            window_size=self.thresholds.temporal_consensus_window,
+            min_votes=self.thresholds.object_presence_consensus_frames,
+        )
 
         if HAS_MEDIAPIPE_SOLUTIONS:
             self.hands = MP_SOLUTIONS.hands.Hands(
@@ -63,6 +76,22 @@ class ObjectAnalyzer:
         if hand_landmarks and not person_present:
             person_present = True
 
+        phone_detected = self._stable_binary(
+            phone_detected,
+            counter_name="phone_frames",
+            required_frames=self.thresholds.object_presence_consensus_frames,
+        )
+        hand_on_face = self._stable_binary(
+            hand_on_face,
+            counter_name="hand_face_frames",
+            required_frames=self.thresholds.object_presence_consensus_frames,
+        )
+        person_present = self._stable_binary(
+            person_present,
+            counter_name="person_frames",
+            required_frames=self.thresholds.object_presence_consensus_frames,
+        )
+
         if not person_present:
             object_state = "usuario_ausente"
         elif phone_detected:
@@ -101,12 +130,16 @@ class ObjectAnalyzer:
         expand_y = int(face_height * self.thresholds.hand_face_distance)
         zone = (x1 - expand_x, y1 - expand_y, x2 + expand_x, y2 + expand_y)
 
+        required_points = self.thresholds.hand_face_min_points
         for hand_landmarks in hands_result.multi_hand_landmarks:
+            points_inside = 0
             for landmark in hand_landmarks.landmark:
                 point_x = int(landmark.x * frame_width)
                 point_y = int(landmark.y * frame_height)
                 if zone[0] <= point_x <= zone[2] and zone[1] <= point_y <= zone[3]:
-                    return True
+                    points_inside += 1
+            if points_inside >= required_points:
+                return True
         return False
 
     def _run_yolo(self, frame) -> list[tuple[tuple[int, int, int, int], str, float]]:
@@ -123,6 +156,13 @@ class ObjectAnalyzer:
             cls_id = int(box.cls[0].item())
             confidence = float(box.conf[0].item())
             label = result.names.get(cls_id, str(cls_id))
+            min_confidence = self.thresholds.yolo_confidence_threshold
+            if label == "cell phone":
+                min_confidence = self.thresholds.yolo_phone_confidence_threshold
+            elif label == "person":
+                min_confidence = self.thresholds.yolo_person_confidence_threshold
+            if confidence < min_confidence:
+                continue
             x1, y1, x2, y2 = [int(value) for value in box.xyxy[0].tolist()]
             boxes.append(((x1, y1, x2, y2), label, confidence))
         return boxes
@@ -138,3 +178,15 @@ class ObjectAnalyzer:
         if hand_on_face:
             confidence += 0.1
         return round(min(1.0, confidence), 4)
+
+    def _stable_binary(self, candidate: bool, counter_name: str, required_frames: int) -> bool:
+        mapping = {
+            "phone_frames": self.phone_consensus,
+            "hand_face_frames": self.hand_face_consensus,
+            "person_frames": self.person_consensus,
+        }
+        consensus = mapping[counter_name]
+        stable_value = bool(consensus.update(candidate))
+        if candidate and len(consensus.snapshot()) < max(1, required_frames):
+            return False
+        return stable_value

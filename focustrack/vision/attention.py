@@ -3,11 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import cv2
-import mediapipe as mp
 import numpy as np
 
 from focustrack.config import DetectionThresholds
 from focustrack.models import AttentionMetrics
+from focustrack.vision.mp_compat import HAS_MEDIAPIPE_SOLUTIONS, MP_SOLUTIONS
+from focustrack.vision.temporal import TemporalConsensus
 
 try:
     import dlib
@@ -20,7 +21,6 @@ RIGHT_EYE = [362, 385, 387, 263, 373, 380]
 LEFT_IRIS = [468, 469, 470, 471, 472]
 RIGHT_IRIS = [473, 474, 475, 476, 477]
 FACE_BBOX_REFERENCE = [10, 152, 234, 454]
-HAS_MEDIAPIPE_SOLUTIONS = hasattr(mp, "solutions")
 FACE_CASCADE = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
@@ -36,8 +36,8 @@ class AttentionAnalyzer:
         self.thresholds = thresholds
         self.use_mediapipe = HAS_MEDIAPIPE_SOLUTIONS
         self.face_mesh = None
-        if self.use_mediapipe:
-            self.face_mesh = mp.solutions.face_mesh.FaceMesh(
+        if self.use_mediapipe and MP_SOLUTIONS is not None:
+            self.face_mesh = MP_SOLUTIONS.face_mesh.FaceMesh(
                 max_num_faces=1,
                 refine_landmarks=True,
                 min_detection_confidence=0.5,
@@ -46,6 +46,14 @@ class AttentionAnalyzer:
         self.closed_eye_frames = 0
         self.blink_count = 0
         self.previous_eyes_closed = False
+        self.face_presence_consensus = TemporalConsensus[bool](
+            window_size=self.thresholds.temporal_consensus_window,
+            min_votes=self.thresholds.face_presence_consensus_frames,
+        )
+        self.attention_state_consensus = TemporalConsensus[str](
+            window_size=self.thresholds.temporal_consensus_window,
+            min_votes=self.thresholds.attention_state_consensus_frames,
+        )
         self.use_dlib = False
         self.dlib_detector = None
 
@@ -67,10 +75,8 @@ class AttentionAnalyzer:
         }
 
         if not result.multi_face_landmarks:
-            face_detected = (
-                self._dlib_face_detected(frame)
-                if self.dlib_detector is not None
-                else False
+            face_detected = self._stable_face_detected(
+                self._dlib_face_detected(frame) if self.dlib_detector is not None else False
             )
             self.closed_eye_frames = 0
             self.previous_eyes_closed = False
@@ -78,7 +84,7 @@ class AttentionAnalyzer:
                 face_detected=face_detected,
                 eyes_detected=False,
                 eyes_closed=False,
-                attention_state="ausente",
+                attention_state=self._stable_attention("ausente"),
                 gaze_direction="desconocida",
                 fatigue_score=0.0,
                 blink_count=self.blink_count,
@@ -91,6 +97,22 @@ class AttentionAnalyzer:
         face_bbox = self._face_bbox(
             face_landmarks.landmark, frame.shape[1], frame.shape[0]
         )
+        if not self._valid_face_bbox(face_bbox, frame.shape[1], frame.shape[0]):
+            self.closed_eye_frames = 0
+            self.previous_eyes_closed = False
+            metrics = AttentionMetrics(
+                face_detected=self._stable_face_detected(False),
+                eyes_detected=False,
+                eyes_closed=False,
+                attention_state=self._stable_attention("ausente"),
+                gaze_direction="desconocida",
+                fatigue_score=0.0,
+                blink_count=self.blink_count,
+                backend=backend,
+            )
+            return metrics, debug
+
+        stable_face_detected = self._stable_face_detected(True)
         debug["face_bbox"] = face_bbox
 
         left_eye_points = self._pixels(
@@ -119,17 +141,17 @@ class AttentionAnalyzer:
         )
 
         if eyes_closed and fatigue_score >= 0.75:
-            attention_state = "somnoliento"
+            attention_candidate = "somnoliento"
         elif gaze_direction == "centro":
-            attention_state = "atento"
+            attention_candidate = "atento"
         else:
-            attention_state = "desviado"
+            attention_candidate = "desviado"
 
         metrics = AttentionMetrics(
-            face_detected=True,
+            face_detected=stable_face_detected,
             eyes_detected=True,
             eyes_closed=eyes_closed,
-            attention_state=attention_state,
+            attention_state=self._stable_attention(attention_candidate),
             gaze_direction=gaze_direction,
             left_ear=left_ear,
             right_ear=right_ear,
@@ -158,10 +180,10 @@ class AttentionAnalyzer:
             self.previous_eyes_closed = False
             return (
                 AttentionMetrics(
-                    face_detected=False,
+                    face_detected=self._stable_face_detected(False),
                     eyes_detected=False,
                     eyes_closed=False,
-                    attention_state="ausente",
+                    attention_state=self._stable_attention("ausente"),
                     gaze_direction="desconocida",
                     fatigue_score=0.0,
                     blink_count=self.blink_count,
@@ -172,12 +194,26 @@ class AttentionAnalyzer:
 
         x, y, w, h = max(faces, key=lambda item: item[2] * item[3])
         debug["face_bbox"] = (x, y, x + w, y + h)
+        if not self._valid_face_bbox(debug["face_bbox"], frame.shape[1], frame.shape[0]):
+            return (
+                AttentionMetrics(
+                    face_detected=self._stable_face_detected(False),
+                    eyes_detected=False,
+                    eyes_closed=False,
+                    attention_state=self._stable_attention("ausente"),
+                    gaze_direction="desconocida",
+                    fatigue_score=0.0,
+                    blink_count=self.blink_count,
+                    backend="fallback-haar",
+                ),
+                debug,
+            )
         return (
             AttentionMetrics(
-                face_detected=True,
+                face_detected=self._stable_face_detected(True),
                 eyes_detected=False,
                 eyes_closed=False,
-                attention_state="atento",
+                attention_state=self._stable_attention("atento"),
                 gaze_direction="desconocida",
                 fatigue_score=0.0,
                 blink_count=self.blink_count,
@@ -197,6 +233,33 @@ class AttentionAnalyzer:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = self.dlib_detector(gray, 0)
         return bool(faces)
+
+    def _stable_face_detected(self, candidate_detected: bool) -> bool:
+        stable_value = bool(self.face_presence_consensus.update(candidate_detected))
+        if (
+            candidate_detected
+            and len(self.face_presence_consensus.snapshot())
+            < self.thresholds.face_presence_consensus_frames
+        ):
+            return False
+        return stable_value
+
+    def _stable_attention(self, candidate_state: str) -> str:
+        return str(self.attention_state_consensus.update(candidate_state))
+
+    def _valid_face_bbox(
+        self,
+        face_bbox: tuple[int, int, int, int],
+        frame_width: int,
+        frame_height: int,
+    ) -> bool:
+        x1, y1, x2, y2 = face_bbox
+        width_ratio = max(0, x2 - x1) / max(frame_width, 1)
+        height_ratio = max(0, y2 - y1) / max(frame_height, 1)
+        return (
+            width_ratio >= self.thresholds.face_min_width_ratio
+            and height_ratio >= self.thresholds.face_min_height_ratio
+        )
 
     def _face_bbox(
         self, landmarks, frame_width: int, frame_height: int
