@@ -58,6 +58,51 @@ class StorageManager:
         history = pd.read_csv(self.csv_path)
         return self._normalize_history_frame(history, limit)
 
+    def load_session_summaries(self, limit: int = 20) -> pd.DataFrame:
+        query = """
+            select
+                s.session_id as session_id,
+                min(s.timestamp) as started_at,
+                max(s.timestamp) as last_seen_at,
+                count(*) as snapshot_count,
+                avg(s.productivity_score) as avg_productivity_score,
+                max(sn.name) as session_name,
+                max(sn.status) as session_status,
+                max(sn.approved_for_training) as approved_for_training
+            from snapshots s
+            left join session_notes sn on sn.session_id = s.session_id
+            group by s.session_id
+            order by max(s.timestamp) desc
+            limit ?
+        """
+        with self._connect() as connection:
+            rows = connection.execute(query, (limit,)).fetchall()
+
+        frame = pd.DataFrame(
+            rows,
+            columns=[
+                "session_id",
+                "started_at",
+                "last_seen_at",
+                "snapshot_count",
+                "avg_productivity_score",
+                "session_name",
+                "session_status",
+                "approved_for_training",
+            ],
+        )
+        if not frame.empty:
+            frame["started_at"] = pd.to_datetime(frame["started_at"], errors="coerce")
+            frame["last_seen_at"] = pd.to_datetime(frame["last_seen_at"], errors="coerce")
+            frame["snapshot_count"] = pd.to_numeric(frame["snapshot_count"], errors="coerce").fillna(0).astype(int)
+            frame["avg_productivity_score"] = pd.to_numeric(
+                frame["avg_productivity_score"], errors="coerce"
+            )
+            frame["approved_for_training"] = frame["approved_for_training"].fillna(0).astype(bool)
+            frame["session_name"] = frame["session_name"].fillna("")
+            frame["session_status"] = frame["session_status"].fillna("")
+        return frame
+
     def append_audit_event(
         self,
         event_type: str,

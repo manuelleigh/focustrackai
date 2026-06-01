@@ -89,6 +89,45 @@ def _get_active_session_id() -> str:
     return str(st.session_state.get("active_session_id", ""))
 
 
+def _parse_optional_iso_datetime(raw_value: str) -> str | None:
+    value = raw_value.strip()
+    if not value:
+        return None
+    return datetime.fromisoformat(value).isoformat()
+
+
+def _status_label(status: str) -> str:
+    labels = {
+        "registrada": "Registrada",
+        "activa": "Activa",
+        "en_revision": "En revision",
+        "finalizada": "Finalizada",
+    }
+    return labels.get(status, status)
+
+
+def _build_session_selector(storage: StorageManager) -> tuple[str, pd.DataFrame]:
+    sessions = storage.load_session_summaries(limit=30)
+    if sessions.empty:
+        return _get_active_session_id(), sessions
+
+    options: dict[str, str] = {}
+    for row in sessions.to_dict(orient="records"):
+        session_id = str(row["session_id"])
+        session_name = str(row["session_name"] or f"Sesion {session_id}")
+        status = _status_label(str(row["session_status"] or "registrada"))
+        avg_score = row.get("avg_productivity_score")
+        score_text = f"{float(avg_score):.1f}" if pd.notna(avg_score) else "s/d"
+        options[f"{session_name} | {status} | score {score_text}"] = session_id
+
+    selected_label = st.sidebar.selectbox(
+        "Sesion para revisar",
+        options=list(options.keys()),
+        index=0,
+    )
+    return options[selected_label], sessions
+
+
 def _render_kpis(history: pd.DataFrame) -> None:
     if history.empty:
         st.info("Aun no hay registros. Inicia el monitoreo para generar datos.")
@@ -154,6 +193,30 @@ def _render_storage_health(storage: StorageManager) -> None:
     cols[3].metric("Notas", str(health["session_notes"]))
     cols[4].metric("Alertas", str(health["alert_rules"]))
     st.caption(f"SQLite: {health['sqlite_path']} | CSV: {health['csv_path']}")
+
+
+def _render_session_summary(selected_session_id: str, sessions: pd.DataFrame) -> None:
+    st.subheader("Resumen de sesion")
+    if not selected_session_id or sessions.empty:
+        st.info("Aun no hay sesiones persistidas para resumir.")
+        return
+
+    current = sessions[sessions["session_id"] == selected_session_id]
+    if current.empty:
+        st.info("La sesion seleccionada aun no tiene snapshots consolidados.")
+        return
+
+    row = current.iloc[0]
+    cols = st.columns(4)
+    cols[0].metric("Sesion", str(row["session_id"]))
+    cols[1].metric("Snapshots", str(int(row["snapshot_count"])))
+    avg_score = row["avg_productivity_score"]
+    cols[2].metric("Score promedio", f"{float(avg_score):.1f}" if pd.notna(avg_score) else "s/d")
+    cols[3].metric("Estado", _status_label(str(row["session_status"] or "registrada")))
+    st.caption(
+        f"Inicio: {row['started_at']} | Ultima actividad: {row['last_seen_at']} | "
+        f"Aprobada para entrenamiento: {'Si' if bool(row['approved_for_training']) else 'No'}"
+    )
 
 
 def _evaluate_alert(snapshot, rules_map: dict[str, dict[str, object]]) -> tuple[str, str]:
@@ -256,10 +319,12 @@ def _render_session_notes(storage: StorageManager, session_id: str) -> None:
             value=bool(current.get("approved_for_training", False)),
         )
         status_options = ["registrada", "activa", "en_revision", "finalizada"]
+        status_labels = {status: _status_label(status) for status in status_options}
         current_status = str(current.get("status", "registrada"))
         status = st.selectbox(
             "Estado",
             options=status_options,
+            format_func=lambda option: status_labels[option],
             index=status_options.index(current_status) if current_status in status_options else 0,
         )
         submitted = st.form_submit_button("Guardar nota")
@@ -299,11 +364,17 @@ def _render_human_labels(storage: StorageManager, session_id: str) -> None:
         if not session_id:
             st.error("No hay una sesion activa o seleccionada para etiquetar.")
             return
+        try:
+            parsed_start = _parse_optional_iso_datetime(start_value)
+            parsed_end = _parse_optional_iso_datetime(end_value)
+        except ValueError:
+            st.error("Las fechas deben estar en formato ISO valido, por ejemplo 2026-06-01T10:30:00.")
+            return
         storage.append_human_label(
             session_id=session_id,
             label=label,
-            start_time=start_value or None,
-            end_time=end_value or None,
+            start_time=parsed_start,
+            end_time=parsed_end,
             notes=notes,
         )
         st.success("Etiqueta humana registrada.")
@@ -355,6 +426,7 @@ def main() -> None:
     config, camera_index, refresh_seconds = _build_config()
     storage = StorageManager(config.data_dir)
     _ensure_session_state()
+    selected_session_id, sessions = _build_session_selector(storage)
 
     controls_left, controls_right = st.columns([1, 3])
     with controls_left:
@@ -377,6 +449,8 @@ def main() -> None:
         _handle_monitor_stop()
 
     history = storage.load_history(limit=400)
+    if selected_session_id and not history.empty and "session_id" in history.columns:
+        history = history[history["session_id"] == selected_session_id]
     _render_kpis(history)
 
     rules_map = storage.get_alert_rules_map()
@@ -390,6 +464,7 @@ def main() -> None:
             st.session_state.last_snapshot = snapshot
             st.session_state.active_session_id = st.session_state.monitor.session_id
             history = storage.load_history(limit=400)
+            history = history[history["session_id"] == st.session_state.monitor.session_id]
         except Exception as exc:
             alert_placeholder.error(f"Error de monitoreo: {exc}")
             _handle_monitor_stop()
@@ -415,8 +490,9 @@ def main() -> None:
 
     _render_history(history, refresh_seconds)
     _render_storage_health(storage)
+    _render_session_summary(selected_session_id or _get_active_session_id(), sessions)
 
-    session_id = _get_active_session_id()
+    session_id = _get_active_session_id() or selected_session_id
     ops_tab, rules_tab, notes_tab, labels_tab, audit_tab = st.tabs(
         ["Operacion", "Alertas", "Notas", "Etiquetas", "Auditoria"]
     )

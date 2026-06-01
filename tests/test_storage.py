@@ -113,6 +113,46 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(events.iloc[0]["event_type"], "snapshot_recorded")
         self.assertEqual(events.iloc[0]["details"]["productivity_score"], 40.0)
 
+    def test_load_session_summaries_aggregates_snapshots_and_notes(self) -> None:
+        self.storage.upsert_session_note(
+            session_id="session-1",
+            name="Sesion principal",
+            description="Consolidada",
+            approved_for_training=True,
+            status="finalizada",
+        )
+        first_snapshot = ProductivitySnapshot(
+            session_id="session-1",
+            attention=AttentionMetrics(attention_state="atento"),
+            posture=PostureMetrics(posture_state="correcta", posture_score=80.0, confidence=0.8),
+            objects=ObjectMetrics(person_present=True, confidence=0.6),
+            screen=ScreenMetrics(active_app="Code", category="trabajo", productivity_score=90.0),
+            productivity_score=80.0,
+            productivity_label="Productivo",
+        )
+        second_snapshot = ProductivitySnapshot(
+            session_id="session-1",
+            attention=AttentionMetrics(attention_state="desviado"),
+            posture=PostureMetrics(posture_state="mejorable", posture_score=60.0, confidence=0.5),
+            objects=ObjectMetrics(person_present=True, confidence=0.4),
+            screen=ScreenMetrics(active_app="Browser", category="neutral", productivity_score=60.0),
+            productivity_score=60.0,
+            productivity_label="Regular",
+        )
+        self.storage.append_snapshot(first_snapshot)
+        self.storage.append_snapshot(second_snapshot)
+
+        summaries = self.storage.load_session_summaries(limit=10)
+
+        self.assertEqual(len(summaries), 1)
+        summary = summaries.iloc[0]
+        self.assertEqual(summary["session_id"], "session-1")
+        self.assertEqual(summary["session_name"], "Sesion principal")
+        self.assertEqual(summary["session_status"], "finalizada")
+        self.assertEqual(int(summary["snapshot_count"]), 2)
+        self.assertTrue(bool(summary["approved_for_training"]))
+        self.assertAlmostEqual(float(summary["avg_productivity_score"]), 70.0, places=2)
+
 
 if __name__ == "__main__":
     unittest.main()
