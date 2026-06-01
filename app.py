@@ -6,9 +6,19 @@ import cv2
 import pandas as pd
 import streamlit as st
 
+from focustrack.ai.classifier import model_path, predict_history, train_classifier
 from focustrack.config import FocusTrackConfig, OptionalModels, ProductivityWeights
 from focustrack.monitor import FocusTrackMonitor
 from focustrack.monitoring.storage import StorageManager
+from focustrack.reporting.session_report import (
+    available_sessions,
+    build_critical_events,
+    build_recommendations,
+    build_session_summary,
+    export_report_excel,
+    export_report_html,
+    filter_session,
+)
 
 
 st.set_page_config(
@@ -242,6 +252,103 @@ def _render_history(history: pd.DataFrame, refresh_seconds: float) -> None:
     st.dataframe(history.tail(20)[cols], use_container_width=True, hide_index=True)
 
 
+def _render_report_panel(history: pd.DataFrame, refresh_seconds: float, data_dir) -> None:
+    st.subheader("Reporte exportable")
+    if history.empty:
+        st.info("Aun no hay datos para generar reportes.")
+        return
+
+    sessions = ["Todas"] + available_sessions(history)
+    selected_session = st.selectbox("Sesion a reportar", sessions, index=len(sessions) - 1)
+    session_history = filter_session(history, selected_session)
+
+    if session_history.empty:
+        st.warning("La sesion seleccionada no tiene datos.")
+        return
+
+    summary = build_session_summary(session_history, refresh_seconds)
+    metric_1, metric_2, metric_3, metric_4 = st.columns(4)
+    metric_1.metric("Promedio", f"{summary['score_promedio']:.1f}")
+    metric_2.metric("Tiempo total", f"{summary['tiempo_total_min']:.2f} min")
+    metric_3.metric("Tiempo distraido", f"{summary['tiempo_distraido_min']:.2f} min")
+    metric_4.metric("Eventos criticos", str(summary["eventos_criticos"]))
+
+    st.markdown("**Recomendaciones automaticas**")
+    for recommendation in build_recommendations(summary, session_history):
+        st.write(f"- {recommendation}")
+
+    critical_events = build_critical_events(session_history)
+    if not critical_events.empty:
+        st.markdown("**Eventos criticos recientes**")
+        st.dataframe(critical_events, use_container_width=True, hide_index=True)
+
+    excel_bytes = export_report_excel(session_history, refresh_seconds)
+    html_report = export_report_html(session_history, refresh_seconds).encode("utf-8")
+    report_name = str(selected_session).replace(" ", "_").lower()
+
+    download_left, download_right = st.columns(2)
+    with download_left:
+        st.download_button(
+            "Descargar Excel",
+            data=excel_bytes,
+            file_name=f"focustrack_reporte_{report_name}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+    with download_right:
+        st.download_button(
+            "Descargar HTML",
+            data=html_report,
+            file_name=f"focustrack_reporte_{report_name}.html",
+            mime="text/html",
+            use_container_width=True,
+        )
+
+
+def _render_ai_panel(history: pd.DataFrame, data_dir) -> None:
+    st.subheader("Modelo IA de clasificacion")
+    st.caption("Entrena un Random Forest para clasificar cada registro como Productivo, Regular o Distraido.")
+
+    model_file = model_path(data_dir)
+    if model_file.exists():
+        st.success(f"Modelo disponible: {model_file.name}")
+    else:
+        st.info("Aun no hay modelo entrenado. Puedes entrenarlo con historico real o con datos simulados para demo.")
+
+    if st.button("Entrenar / actualizar modelo IA", type="primary", use_container_width=True):
+        result = train_classifier(history, data_dir)
+        if result.trained:
+            st.success(result.message)
+            st.write(f"Fuente: `{result.source}` | Filas usadas: `{result.rows}` | Clases: `{', '.join(result.labels)}`")
+            if result.accuracy is not None:
+                st.metric("Accuracy de validacion", f"{result.accuracy:.2%}")
+            if result.report:
+                st.text(result.report)
+        else:
+            st.error(result.message)
+
+    predictions = predict_history(history.tail(200), data_dir)
+    if predictions.empty:
+        return
+
+    st.markdown("**Predicciones recientes del modelo**")
+    columns = [
+        "timestamp",
+        "productivity_label",
+        "ai_prediction",
+        "ai_confidence",
+        "productivity_score",
+        "attention_state",
+        "object_state",
+        "screen_category",
+    ]
+    available_columns = [column for column in columns if column in predictions.columns]
+    st.dataframe(predictions.tail(30)[available_columns], use_container_width=True, hide_index=True)
+
+    agreement = (predictions["productivity_label"].astype(str) == predictions["ai_prediction"].astype(str)).mean()
+    st.metric("Coincidencia IA vs regla", f"{agreement:.2%}")
+
+
 def _frame_to_rgb(frame):
     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -350,11 +457,12 @@ else:
 history = storage.load_history(limit=400)
 _render_history(history, refresh_seconds)
 
+full_history = storage.load_history()
 report_tab, ai_tab = st.tabs(["Reporte de sesion", "Clasificador IA"])
 with report_tab:
-    st.info("El modulo de reportes exportables estara disponible en esta pestaña.")
+    _render_report_panel(full_history, refresh_seconds, config.data_dir)
 with ai_tab:
-    st.info("El clasificador IA estara disponible en esta pestaña.")
+    _render_ai_panel(full_history, config.data_dir)
 
 if st.session_state.monitor_running:
     time.sleep(refresh_seconds)
