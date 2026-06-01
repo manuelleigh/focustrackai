@@ -24,39 +24,92 @@ def _normalize_weights(raw_weights: dict[str, float]) -> ProductivityWeights:
     )
 
 
-def _build_config() -> tuple[FocusTrackConfig, int, float]:
-    st.sidebar.header("Configuracion")
-    camera_index = int(
-        st.sidebar.number_input("Indice de camara", min_value=0, max_value=5, value=0, step=1)
-    )
-    refresh_seconds = float(
-        st.sidebar.slider(
-            "Intervalo de muestreo (seg)",
-            min_value=0.5,
-            max_value=3.0,
-            value=1.0,
-            step=0.5,
-        )
-    )
-    enable_yolo = st.sidebar.checkbox("Activar YOLO si esta disponible", value=False)
-    enable_dlib = st.sidebar.checkbox("Activar respaldo con dlib si esta disponible", value=False)
-    capture_screen = st.sidebar.checkbox("Guardar capturas de pantalla", value=False)
+def _inject_custom_css():
+    st.markdown("""
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    st.sidebar.subheader("Pesos del score")
-    raw_weights = {
-        "attention": float(
-            st.sidebar.slider("Atencion visual", min_value=5, max_value=70, value=40, step=5)
-        ),
-        "phone": float(
-            st.sidebar.slider("Celular / objetos", min_value=5, max_value=50, value=20, step=5)
-        ),
-        "posture": float(
-            st.sidebar.slider("Postura", min_value=5, max_value=40, value=15, step=5)
-        ),
-        "screen": float(
-            st.sidebar.slider("Actividad en PC", min_value=5, max_value=60, value=25, step=5)
-        ),
-    }
+        :root {
+            --primary: #4F46E5;
+            --background: #111827;
+            --card-bg: #1F2937;
+            --text-main: #F9FAFB;
+            --text-muted: #9CA3AF;
+        }
+        
+        html, body, [class*="css"] {
+            font-family: 'Inter', sans-serif !important;
+        }
+
+        /* Contenedores (Cards) */
+        div[data-testid="stMetric"], div.stDataFrame, div[data-testid="stExpander"] {
+            background-color: var(--card-bg) !important;
+            padding: 1rem !important;
+            border-radius: 0.75rem !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+            border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        }
+
+        /* Tabs styling */
+        div.stTabs [data-baseweb="tab"] {
+            padding: 0.5rem 1rem !important;
+            border-radius: 0.5rem !important;
+            margin-right: 0.5rem !important;
+            background: transparent !important;
+            color: var(--text-muted) !important;
+            transition: all 0.3s ease !important;
+        }
+        div.stTabs [aria-selected="true"] {
+            background-color: var(--primary) !important;
+            color: white !important;
+            box-shadow: 0 4px 14px 0 rgba(79, 70, 229, 0.39) !important;
+        }
+
+        /* Botones primarios */
+        button[kind="primary"] {
+            background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%) !important;
+            border: none !important;
+            color: white !important;
+            box-shadow: 0 4px 14px 0 rgba(79, 70, 229, 0.39) !important;
+            border-radius: 0.5rem !important;
+            font-weight: 600 !important;
+            transition: transform 0.2s !important;
+        }
+        button[kind="primary"]:hover {
+            transform: translateY(-2px) !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+
+def _build_config() -> tuple[FocusTrackConfig, int, float]:
+    st.sidebar.header("⚙️ Configuración")
+    
+    with st.sidebar.expander("📷 Captura y Modelos", expanded=True):
+        camera_index = int(
+            st.number_input("Índice de cámara", min_value=0, max_value=5, value=0, step=1)
+        )
+        refresh_seconds = float(
+            st.slider(
+                "Intervalo de muestreo (seg)",
+                min_value=0.5,
+                max_value=3.0,
+                value=1.0,
+                step=0.5,
+            )
+        )
+        enable_yolo = st.checkbox("Activar YOLO (si disponible)", value=False)
+        enable_dlib = st.checkbox("Activar dlib (si disponible)", value=False)
+        capture_screen = st.checkbox("Guardar capturas", value=False)
+
+    with st.sidebar.expander("⚖️ Pesos del Score", expanded=False):
+        raw_weights = {
+            "attention": float(st.slider("Atención visual", min_value=5, max_value=70, value=40, step=5)),
+            "phone": float(st.slider("Celular / objetos", min_value=5, max_value=50, value=20, step=5)),
+            "posture": float(st.slider("Postura", min_value=5, max_value=40, value=15, step=5)),
+            "screen": float(st.slider("Actividad en PC", min_value=5, max_value=60, value=25, step=5)),
+        }
+        
     weights = _normalize_weights(raw_weights)
 
     config = FocusTrackConfig(
@@ -721,11 +774,12 @@ def _handle_monitor_stop() -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="FocusTrack AI", page_icon=":brain:", layout="wide")
-    st.title("Sistema Inteligente de Monitoreo de Rendimiento y Distraccion Laboral")
+    st.set_page_config(page_title="FocusTrack AI", page_icon="🧠", layout="wide")
+    _inject_custom_css()
+    
+    st.title("🧠 FocusTrack AI")
     st.caption(
-        "Vision por computadora + reglas persistidas para estimar atencion, fatiga, postura, "
-        "distracciones y actividad en PC."
+        "Monitoreo inteligente de rendimiento y distracciones con análisis avanzado visual."
     )
 
     config, camera_index, refresh_seconds = _build_config()
@@ -733,92 +787,130 @@ def main() -> None:
     _ensure_session_state()
     selected_session_id, sessions = _build_session_selector(storage)
 
-    controls_left, controls_right = st.columns([1, 3])
-    with controls_left:
-        start_clicked = st.button(
-            "Iniciar monitoreo",
-            use_container_width=True,
-            type="primary",
-            disabled=st.session_state.monitor_running,
-        )
-    with controls_right:
-        stop_clicked = st.button(
-            "Detener monitoreo",
-            use_container_width=True,
-            disabled=not st.session_state.monitor_running,
-        )
-
-    if start_clicked:
-        _handle_monitor_start(config, camera_index)
-    if stop_clicked:
-        _handle_monitor_stop()
-
-    history = storage.load_history(limit=400, session_id=selected_session_id or None)
-    _render_kpis(history)
-
-    rules_map = storage.get_alert_rules_map()
-    frame_placeholder = st.empty()
-    alert_placeholder = st.empty()
-
-    if st.session_state.monitor_running and st.session_state.monitor is not None:
-        try:
-            snapshot, frame = st.session_state.monitor.process_next()
-            st.session_state.last_frame = frame
-            st.session_state.last_snapshot = snapshot
-            st.session_state.active_session_id = st.session_state.monitor.session_id
-            history = storage.load_history(
-                limit=400,
-                session_id=st.session_state.monitor.session_id,
-            )
-        except Exception as exc:
-            alert_placeholder.error(f"Error de monitoreo: {exc}")
-            _handle_monitor_stop()
+    # 4 Main Tabs
+    tab_dashboard, tab_analytics, tab_session, tab_config = st.tabs([
+        "📊 Dashboard en Tiempo Real", 
+        "📈 Analítica e Historial", 
+        "📝 Gestión de Sesiones", 
+        "⚙️ Configuración del Sistema"
+    ])
 
     active_session_id = _get_active_session_id() or selected_session_id
-    alert_result = _evaluate_alert(st.session_state.last_snapshot, rules_map)
-    _register_alert_event_if_needed(storage, active_session_id, alert_result)
-    if alert_result["severity"] == "error":
-        alert_placeholder.error(str(alert_result["message"]))
-    elif alert_result["severity"] == "warning":
-        alert_placeholder.warning(str(alert_result["message"]))
-    elif alert_result["severity"] == "info":
-        alert_placeholder.info(str(alert_result["message"]))
-    else:
-        alert_placeholder.success(str(alert_result["message"]))
+    rules_map = storage.get_alert_rules_map()
 
-    if st.session_state.last_frame is not None:
-        frame_placeholder.image(
-            _frame_to_rgb(st.session_state.last_frame),
-            caption="Vista analizada",
-            use_container_width=True,
-        )
-    else:
-        frame_placeholder.info("Cuando inicies el monitoreo se mostrara aqui el frame anotado en tiempo real.")
+    # --- TAB 1: DASHBOARD ---
+    with tab_dashboard:
+        st.header("Monitor de Productividad")
+        controls_left, controls_right = st.columns([1, 1])
+        with controls_left:
+            start_clicked = st.button(
+                "▶️ Iniciar monitoreo",
+                use_container_width=True,
+                type="primary",
+                disabled=st.session_state.monitor_running,
+            )
+        with controls_right:
+            stop_clicked = st.button(
+                "⏹️ Detener monitoreo",
+                use_container_width=True,
+                disabled=not st.session_state.monitor_running,
+            )
 
-    _render_history(history, refresh_seconds, selected_session_id)
-    _render_storage_health(storage)
-    _render_session_summary(selected_session_id or _get_active_session_id(), sessions)
-    _render_session_analytics(storage, selected_session_id or _get_active_session_id())
-    _render_alert_status(alert_result)
+        if start_clicked:
+            _handle_monitor_start(config, camera_index)
+        if stop_clicked:
+            _handle_monitor_stop()
 
-    session_id = active_session_id
-    ops_tab, rules_tab, notes_tab, labels_tab, audit_tab, eval_tab = st.tabs(
-        ["Operacion", "Alertas", "Notas", "Etiquetas", "Auditoria", "Evaluacion"]
-    )
-    with ops_tab:
-        st.write(f"Sesion activa: `{session_id or 'sin_sesion'}`")
-        st.write("El historial y las alertas se leen desde SQLite; el CSV se mantiene como respaldo.")
-        _render_history_export(storage, session_id)
-    with rules_tab:
-        _render_alert_rules(storage)
-    with notes_tab:
-        _render_session_notes(storage, session_id)
-    with labels_tab:
-        _render_human_labels(storage, session_id)
-    with audit_tab:
-        _render_audit_events(storage, session_id)
-    with eval_tab:
-        _render_evaluation_panel(storage, session_id)
+        history = storage.load_history(limit=400, session_id=selected_session_id or None)
+        _render_kpis(history)
+        st.divider()
+
+        col_cam, col_alerts = st.columns([2, 1])
+        
+        with col_cam:
+            st.subheader("Visualización en Vivo")
+            frame_placeholder = st.empty()
+            
+        with col_alerts:
+            st.subheader("Estado Inmediato")
+            alert_placeholder = st.empty()
+
+        if st.session_state.monitor_running and st.session_state.monitor is not None:
+            try:
+                snapshot, frame = st.session_state.monitor.process_next()
+                st.session_state.last_frame = frame
+                st.session_state.last_snapshot = snapshot
+                st.session_state.active_session_id = st.session_state.monitor.session_id
+                history = storage.load_history(
+                    limit=400,
+                    session_id=st.session_state.monitor.session_id,
+                )
+                active_session_id = st.session_state.monitor.session_id
+            except Exception as exc:
+                alert_placeholder.error(f"Error de monitoreo: {exc}")
+                _handle_monitor_stop()
+
+        alert_result = _evaluate_alert(st.session_state.last_snapshot, rules_map)
+        _register_alert_event_if_needed(storage, active_session_id, alert_result)
+        
+        with col_alerts:
+            if alert_result["severity"] == "error":
+                alert_placeholder.error(str(alert_result["message"]))
+            elif alert_result["severity"] == "warning":
+                alert_placeholder.warning(str(alert_result["message"]))
+            elif alert_result["severity"] == "info":
+                alert_placeholder.info(str(alert_result["message"]))
+            else:
+                alert_placeholder.success(str(alert_result["message"]))
+            st.divider()
+            _render_alert_status(alert_result)
+
+        with col_cam:
+            if st.session_state.last_frame is not None:
+                frame_placeholder.image(
+                    _frame_to_rgb(st.session_state.last_frame),
+                    caption="Vista analizada en tiempo real",
+                    use_container_width=True,
+                )
+            else:
+                frame_placeholder.info("El frame analizado aparecerá aquí al iniciar el monitoreo.")
+
+    # --- TAB 2: ANALYTICS ---
+    with tab_analytics:
+        st.header("Analítica de la Sesión")
+        _render_history(history, refresh_seconds, selected_session_id)
+        st.divider()
+        _render_session_analytics(storage, active_session_id)
+
+    # --- TAB 3: SESSION MANAGEMENT ---
+    with tab_session:
+        st.header("Gestión y Evaluación")
+        _render_session_summary(active_session_id, sessions)
+        st.divider()
+        
+        col_notes, col_eval = st.columns([1, 1])
+        with col_notes:
+            _render_session_notes(storage, active_session_id)
+            st.divider()
+            _render_human_labels(storage, active_session_id)
+            
+        with col_eval:
+            _render_evaluation_panel(storage, active_session_id)
+
+    # --- TAB 4: CONFIGURATION & SYSTEM ---
+    with tab_config:
+        st.header("Configuración del Sistema")
+        cfg_col1, cfg_col2 = st.columns(2)
+        with cfg_col1:
+            _render_storage_health(storage)
+            st.divider()
+            st.subheader("Exportación de Datos")
+            _render_history_export(storage, active_session_id)
+        with cfg_col2:
+            _render_alert_rules(storage)
+            
+        st.divider()
+        _render_audit_events(storage, active_session_id)
 
     if st.session_state.monitor_running:
         time.sleep(refresh_seconds)
