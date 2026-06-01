@@ -1,34 +1,32 @@
 from __future__ import annotations
 
 import cv2
-import mediapipe as mp
 
 from focustrack.config import DetectionThresholds, OptionalModels
 from focustrack.models import ObjectMetrics
+from focustrack.vision.mp_compat import HAS_MEDIAPIPE_SOLUTIONS, MP_SOLUTIONS
 
 try:
     from ultralytics import YOLO
-except ImportError:
+except ImportError:  # pragma: no cover - optional dependency
     YOLO = None
-
-HAS_MEDIAPIPE_SOLUTIONS = hasattr(mp, "solutions")
 
 
 class ObjectAnalyzer:
     def __init__(self, thresholds: DetectionThresholds, models: OptionalModels):
         self.thresholds = thresholds
         self.models = models
-        self.use_mediapipe = HAS_MEDIAPIPE_SOLUTIONS
         self.hands = None
-        if self.use_mediapipe:
-            self.hands = mp.solutions.hands.Hands(
+        self.yolo_model = None
+        self.last_boxes: list[tuple[tuple[int, int, int, int], str, float]] = []
+
+        if HAS_MEDIAPIPE_SOLUTIONS:
+            self.hands = MP_SOLUTIONS.hands.Hands(
                 static_image_mode=False,
                 max_num_hands=2,
                 min_detection_confidence=0.5,
                 min_tracking_confidence=0.5,
             )
-        self.yolo_model = None
-        self.last_boxes: list[tuple[tuple[int, int, int, int], str, float]] = []
 
         if models.enable_yolo and YOLO is not None:
             try:
@@ -42,16 +40,15 @@ class ObjectAnalyzer:
         face_bbox: tuple[int, int, int, int] | None = None,
         frame_number: int = 0,
     ) -> tuple[ObjectMetrics, dict[str, object]]:
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        hands_result = self.hands.process(rgb_frame) if self.hands is not None else None
+        hands_result = None
+        if self.hands is not None:
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            hands_result = self.hands.process(rgb_frame)
         phone_detected = False
         person_present = face_bbox is not None
-        backend = "hands" if self.hands is not None else "fallback"
+        backend = "hands" if self.hands is not None else "heuristico"
 
-        if (
-            self.yolo_model is not None
-            and frame_number % max(1, self.models.yolo_frame_stride) == 0
-        ):
+        if self.yolo_model is not None and frame_number % max(1, self.models.yolo_frame_stride) == 0:
             backend = "yolo+hands"
             self.last_boxes = self._run_yolo(frame)
 
@@ -61,16 +58,9 @@ class ObjectAnalyzer:
             if label == "person":
                 person_present = True
 
-        hand_on_face = False
-        if hands_result is not None:
-            hand_on_face = self._hand_on_face(
-                hands_result, face_bbox, frame.shape[1], frame.shape[0]
-            )
-        if (
-            hands_result is not None
-            and hands_result.multi_hand_landmarks
-            and not person_present
-        ):
+        hand_landmarks = getattr(hands_result, "multi_hand_landmarks", None)
+        hand_on_face = self._hand_on_face(hands_result, face_bbox, frame.shape[1], frame.shape[0])
+        if hand_landmarks and not person_present:
             person_present = True
 
         if not person_present:
@@ -88,11 +78,10 @@ class ObjectAnalyzer:
             person_present=person_present,
             object_state=object_state,
             backend=backend,
+            confidence=self._confidence(phone_detected, hand_on_face, person_present, backend),
         )
         debug = {
-            "hand_landmarks": (
-                hands_result.multi_hand_landmarks if hands_result else None
-            ),
+            "hand_landmarks": hand_landmarks,
             "yolo_boxes": self.last_boxes,
         }
         return metrics, debug
@@ -101,18 +90,8 @@ class ObjectAnalyzer:
         if self.hands is not None:
             self.hands.close()
 
-    def _hand_on_face(
-        self,
-        hands_result,
-        face_bbox: tuple[int, int, int, int] | None,
-        frame_width: int,
-        frame_height: int,
-    ) -> bool:
-        if (
-            face_bbox is None
-            or not hands_result
-            or not hands_result.multi_hand_landmarks
-        ):
+    def _hand_on_face(self, hands_result, face_bbox: tuple[int, int, int, int] | None, frame_width: int, frame_height: int) -> bool:
+        if face_bbox is None or not hands_result or not hands_result.multi_hand_landmarks:
             return False
 
         x1, y1, x2, y2 = face_bbox
@@ -147,3 +126,15 @@ class ObjectAnalyzer:
             x1, y1, x2, y2 = [int(value) for value in box.xyxy[0].tolist()]
             boxes.append(((x1, y1, x2, y2), label, confidence))
         return boxes
+
+    def _confidence(self, phone_detected: bool, hand_on_face: bool, person_present: bool, backend: str) -> float:
+        confidence = 0.35 if person_present else 0.15
+        if backend.startswith("yolo"):
+            confidence += 0.35
+        elif backend == "hands":
+            confidence += 0.2
+        if phone_detected:
+            confidence += 0.2
+        if hand_on_face:
+            confidence += 0.1
+        return round(min(1.0, confidence), 4)
