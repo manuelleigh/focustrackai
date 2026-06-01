@@ -15,6 +15,7 @@ from focustrack.monitoring.storage import StorageManager
 from ui.style import inject_custom_css
 from ui.charts import render_score_chart, render_app_usage_chart
 from ui.components import render_live_indicator, render_empty_state, render_gauge_score
+from focustrack.notifications import OSNotifier
 
 def _normalize_weights(raw_weights: dict[str, float]) -> ProductivityWeights:
     total = sum(raw_weights.values()) or 1.0
@@ -419,6 +420,14 @@ def _register_alert_event_if_needed(
         session_id=session_id,
     )
     st.session_state["last_alert_signature"] = signature
+
+    severity = str(alert_result["severity"])
+    if severity in ["warning", "error"]:
+        OSNotifier.send_notification(
+            title="Alerta de FocusTrack",
+            message=str(alert_result["message"]),
+            severity=severity
+        )
 
 
 def _render_alert_status(alert_result: dict[str, object]) -> None:

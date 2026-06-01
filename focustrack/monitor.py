@@ -171,7 +171,14 @@ class FocusTrackMonitor:
             )
 
         header_color = self._score_color(snapshot.productivity_score)
-        cv2.rectangle(frame, (0, 0), (frame.shape[1], 120), (15, 15, 15), -1)
+        
+        # --- HUD OVERLAY ---
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (0, 0), (frame.shape[1], 135), (15, 15, 15), -1)
+        cv2.rectangle(overlay, (0, frame.shape[0] - 60), (frame.shape[1], frame.shape[0]), (15, 15, 15), -1)
+        alpha = 0.65
+        cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+        # -------------------
         cv2.putText(
             frame,
             f"Score: {snapshot.productivity_score:.1f}",
