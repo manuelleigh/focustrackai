@@ -27,6 +27,11 @@ Sistema de monitoreo de atencion, distraccion y productividad laboral usando vis
    - Exportacion de historial filtrado por sesion a CSV de analisis.
    - Exportacion de auditoria filtrada por sesion a CSV para revision operativa.
 
+5. Evaluacion experimental
+   - Cruce entre `productivity_label` predicho y `human_label` registrado manualmente.
+   - Accuracy, macro F1 y matriz de confusion por sesion.
+   - Dataset evaluable construido desde historial persistido y rangos de etiquetas humanas.
+
 ## Instalacion
 
 ```bash

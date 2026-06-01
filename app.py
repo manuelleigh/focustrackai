@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from focustrack.config import FocusTrackConfig, OptionalModels, ProductivityWeights
+from focustrack.engine.evaluation import build_labeled_dataset, evaluate_label_predictions
 from focustrack.monitor import FocusTrackMonitor
 from focustrack.monitoring.storage import StorageManager
 
@@ -640,6 +641,62 @@ def _render_audit_events(storage: StorageManager, session_id: str) -> None:
     st.dataframe(events, use_container_width=True, hide_index=True)
 
 
+def _render_evaluation_panel(storage: StorageManager, session_id: str) -> None:
+    st.subheader("Evaluacion experimental")
+    if not session_id:
+        st.info("Selecciona una sesion con etiquetas humanas para evaluar el modelo.")
+        return
+
+    history = storage.load_history(limit=None, session_id=session_id)
+    human_labels = storage.load_human_labels(session_id=session_id)
+    dataset = build_labeled_dataset(history=history, human_labels=human_labels)
+    report = evaluate_label_predictions(dataset)
+
+    if int(report["total_samples"]) == 0:
+        st.info("Aun no hay muestras evaluables. Registra etiquetas humanas con rango de tiempo.")
+        return
+
+    cols = st.columns(3)
+    accuracy = report["accuracy"]
+    macro_f1 = report["macro_f1"]
+    cols[0].metric("Muestras evaluadas", str(report["total_samples"]))
+    cols[1].metric("Accuracy", f"{float(accuracy):.3f}" if accuracy is not None else "s/d")
+    cols[2].metric("Macro F1", f"{float(macro_f1):.3f}" if macro_f1 is not None else "s/d")
+
+    st.caption("Comparacion entre `productivity_label` predicho y `human_label` registrado manualmente.")
+
+    per_label = report["per_label"]
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "etiqueta": label,
+                    "soporte": metrics["support"],
+                    "precision": metrics["precision"],
+                    "recall": metrics["recall"],
+                    "f1": metrics["f1"],
+                    "tp": metrics["tp"],
+                    "fp": metrics["fp"],
+                    "fn": metrics["fn"],
+                }
+                for label, metrics in per_label.items()
+            ]
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    confusion_matrix = report["confusion_matrix"]
+    if confusion_matrix:
+        st.caption("Matriz de confusion")
+        confusion_df = pd.DataFrame(confusion_matrix).T
+        confusion_df.index.name = "human_label"
+        st.dataframe(confusion_df, use_container_width=True)
+
+    st.caption("Dataset evaluado")
+    st.dataframe(dataset, use_container_width=True, hide_index=True)
+
+
 def _handle_monitor_start(config: FocusTrackConfig, camera_index: int) -> None:
     try:
         if st.session_state.monitor is not None:
@@ -745,8 +802,8 @@ def main() -> None:
     _render_alert_status(alert_result)
 
     session_id = active_session_id
-    ops_tab, rules_tab, notes_tab, labels_tab, audit_tab = st.tabs(
-        ["Operacion", "Alertas", "Notas", "Etiquetas", "Auditoria"]
+    ops_tab, rules_tab, notes_tab, labels_tab, audit_tab, eval_tab = st.tabs(
+        ["Operacion", "Alertas", "Notas", "Etiquetas", "Auditoria", "Evaluacion"]
     )
     with ops_tab:
         st.write(f"Sesion activa: `{session_id or 'sin_sesion'}`")
@@ -760,6 +817,8 @@ def main() -> None:
         _render_human_labels(storage, session_id)
     with audit_tab:
         _render_audit_events(storage, session_id)
+    with eval_tab:
+        _render_evaluation_panel(storage, session_id)
 
     if st.session_state.monitor_running:
         time.sleep(refresh_seconds)
