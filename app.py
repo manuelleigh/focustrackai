@@ -83,9 +83,9 @@ def _inject_custom_css():
 
 
 def _build_config() -> tuple[FocusTrackConfig, int, float]:
-    st.sidebar.header("⚙️ Configuración")
+    st.sidebar.header(":material/settings: Configuración")
     
-    with st.sidebar.expander("📷 Captura y Modelos", expanded=True):
+    with st.sidebar.expander(":material/videocam: Captura y Modelos", expanded=True):
         camera_index = int(
             st.number_input("Índice de cámara", min_value=0, max_value=5, value=0, step=1)
         )
@@ -102,7 +102,7 @@ def _build_config() -> tuple[FocusTrackConfig, int, float]:
         enable_dlib = st.checkbox("Activar dlib (si disponible)", value=False)
         capture_screen = st.checkbox("Guardar capturas", value=False)
 
-    with st.sidebar.expander("⚖️ Pesos del Score", expanded=False):
+    with st.sidebar.expander(":material/tune: Pesos del Score", expanded=False):
         raw_weights = {
             "attention": float(st.slider("Atención visual", min_value=5, max_value=70, value=40, step=5)),
             "phone": float(st.slider("Celular / objetos", min_value=5, max_value=50, value=20, step=5)),
@@ -774,10 +774,10 @@ def _handle_monitor_stop() -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="FocusTrack AI", page_icon="🧠", layout="wide")
+    st.set_page_config(page_title="FocusTrack AI", page_icon=":material/psychology:", layout="wide")
     _inject_custom_css()
     
-    st.title("🧠 FocusTrack AI")
+    st.title(":material/psychology: FocusTrack AI")
     st.caption(
         "Monitoreo inteligente de rendimiento y distracciones con análisis avanzado visual."
     )
@@ -789,10 +789,10 @@ def main() -> None:
 
     # 4 Main Tabs
     tab_dashboard, tab_analytics, tab_session, tab_config = st.tabs([
-        "📊 Dashboard en Tiempo Real", 
-        "📈 Analítica e Historial", 
-        "📝 Gestión de Sesiones", 
-        "⚙️ Configuración del Sistema"
+        ":material/dashboard: Dashboard en Tiempo Real", 
+        ":material/analytics: Analítica e Historial", 
+        ":material/assignment: Gestión de Sesiones", 
+        ":material/settings: Configuración del Sistema"
     ])
 
     active_session_id = _get_active_session_id() or selected_session_id
@@ -804,14 +804,16 @@ def main() -> None:
         controls_left, controls_right = st.columns([1, 1])
         with controls_left:
             start_clicked = st.button(
-                "▶️ Iniciar monitoreo",
+                "Iniciar monitoreo",
+                icon=":material/play_arrow:",
                 use_container_width=True,
                 type="primary",
                 disabled=st.session_state.monitor_running,
             )
         with controls_right:
             stop_clicked = st.button(
-                "⏹️ Detener monitoreo",
+                "Detener monitoreo",
+                icon=":material/stop:",
                 use_container_width=True,
                 disabled=not st.session_state.monitor_running,
             )
