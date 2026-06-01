@@ -118,12 +118,14 @@ class FocusTrackMonitor:
             weights=self.config.weights,
         )
         self.storage.append_snapshot(snapshot)
+        backend_summary = self._backend_summary(snapshot)
         self.storage.append_audit_event(
             "snapshot_recorded",
             {
                 "frame_number": self.frame_number,
                 "productivity_score": snapshot.productivity_score,
                 "productivity_label": snapshot.productivity_label,
+                "backend_summary": backend_summary,
             },
             session_id=self.session_id,
         )
@@ -215,7 +217,23 @@ class FocusTrackMonitor:
             (255, 255, 255),
             2,
         )
+        cv2.putText(
+            frame,
+            f"Backends: {self._backend_summary(snapshot)}",
+            (16, frame.shape[0] - 42),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (200, 200, 200),
+            1,
+        )
         return frame
+
+    def _backend_summary(self, snapshot: ProductivitySnapshot) -> str:
+        return (
+            f"A:{snapshot.attention.backend}"
+            f" | P:{'mediapipe' if snapshot.posture.confidence >= 0.45 else 'opencv'}"
+            f" | O:{snapshot.objects.backend}"
+        )
 
     def _score_color(self, score: float) -> tuple[int, int, int]:
         if score >= 75.0:
