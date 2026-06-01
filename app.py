@@ -245,7 +245,7 @@ def _render_history_export(storage: StorageManager, session_id: str) -> None:
             step=50,
         )
     )
-    if st.button("Generar exportacion CSV", width=" stretch\):
+    if st.button("Generar exportacion CSV", width="stretch"):
         export_path = _build_export_path(storage, session_id)
         storage.export_history_csv(
             destination=export_path,
@@ -254,7 +254,7 @@ def _render_history_export(storage: StorageManager, session_id: str) -> None:
         )
         st.success(f"Exportacion generada en: {export_path}")
 
-    if st.button("Generar exportacion de auditoria", width=" stretch\):
+    if st.button("Generar exportacion de auditoria", width="stretch"):
         export_path = _build_audit_export_path(storage, session_id)
         storage.export_audit_csv(
             destination=export_path,
@@ -325,7 +325,7 @@ def _render_session_analytics(storage: StorageManager, session_id: str) -> None:
                     for label, count in productivity_breakdown.items()
                 ]
             ),
-            width=" stretch\,
+            width="stretch",
             hide_index=True,
         )
     with right:
@@ -338,7 +338,7 @@ def _render_session_analytics(storage: StorageManager, session_id: str) -> None:
                     for state, count in attention_breakdown.items()
                 ]
             ),
-            width=" stretch\,
+            width="stretch",
             hide_index=True,
         )
 
@@ -551,7 +551,7 @@ def _render_session_notes(storage: StorageManager, session_id: str) -> None:
         st.success("Nota de sesion actualizada.")
 
     if not notes.empty:
-        st.dataframe(notes, width=" stretch\, hide_index=True)
+        st.dataframe(notes, width="stretch", hide_index=True)
 
 
 def _render_human_labels(storage: StorageManager, session_id: str) -> None:
@@ -589,7 +589,7 @@ def _render_human_labels(storage: StorageManager, session_id: str) -> None:
         st.success("Etiqueta humana registrada.")
 
     if not labels.empty:
-        st.dataframe(labels, width=" stretch\, hide_index=True)
+        st.dataframe(labels, width="stretch", hide_index=True)
 
 
 def _render_audit_events(storage: StorageManager, session_id: str) -> None:
@@ -601,7 +601,7 @@ def _render_audit_events(storage: StorageManager, session_id: str) -> None:
         else:
             st.info("Aun no hay eventos de auditoria.")
         return
-    st.dataframe(events, width=" stretch\, hide_index=True)
+    st.dataframe(events, width="stretch", hide_index=True)
 
 
 def _render_evaluation_panel(storage: StorageManager, session_id: str) -> None:
@@ -645,7 +645,7 @@ def _render_evaluation_panel(storage: StorageManager, session_id: str) -> None:
                 for label, metrics in per_label.items()
             ]
         ),
-        width=" stretch\,
+        width="stretch",
         hide_index=True,
     )
 
@@ -654,10 +654,10 @@ def _render_evaluation_panel(storage: StorageManager, session_id: str) -> None:
         st.caption("Matriz de confusion")
         confusion_df = pd.DataFrame(confusion_matrix).T
         confusion_df.index.name = "human_label"
-        st.dataframe(confusion_df, width=" stretch\)
+        st.dataframe(confusion_df, width="stretch")
 
     st.caption("Dataset evaluado")
-    st.dataframe(dataset, width=" stretch\, hide_index=True)
+    st.dataframe(dataset, width="stretch", hide_index=True)
 
 
 def _handle_monitor_start(config: FocusTrackConfig, camera_index: int) -> None:
@@ -717,7 +717,7 @@ def main() -> None:
             start_clicked = st.button(
                 "Iniciar monitoreo",
                 icon=":material/play_arrow:",
-                width=" stretch\,
+                width="stretch",
                 type="primary",
                 disabled=st.session_state.monitor_running,
             )
@@ -725,7 +725,7 @@ def main() -> None:
             stop_clicked = st.button(
                 "Detener monitoreo",
                 icon=":material/stop:",
-                width=" stretch\,
+                width="stretch",
                 disabled=not st.session_state.monitor_running,
             )
 
@@ -783,7 +783,7 @@ def main() -> None:
                 frame_placeholder.image(
                     _frame_to_rgb(st.session_state.last_frame),
                     caption="Vista analizada en tiempo real",
-                    width=" stretch\,
+                    width="stretch",
                 )
             else:
                 with frame_placeholder.container():
@@ -804,7 +804,7 @@ def main() -> None:
             cols = ["timestamp", "productivity_score", "productivity_label", "attention_state", "posture_state", "object_state", "active_app", "screen_category"]
             visible_columns = [c for c in cols if c in history.columns]
             st.subheader("Ultimos eventos")
-            st.dataframe(history.tail(20)[visible_columns], width=" stretch\, hide_index=True)
+            st.dataframe(history.tail(20)[visible_columns], width="stretch", hide_index=True)
 
         st.divider()
         _render_session_analytics(storage, active_session_id)

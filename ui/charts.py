@@ -28,7 +28,7 @@ def render_score_chart(history: pd.DataFrame):
         paper_bgcolor="rgba(0,0,0,0)",
         yaxis=dict(range=[0, 100])
     )
-    st.plotly_chart(fig, width=" stretch\)
+    st.plotly_chart(fig, width="stretch")
 
 def render_app_usage_chart(history: pd.DataFrame, refresh_seconds: float):
     if history.empty:
@@ -68,4 +68,4 @@ def render_app_usage_chart(history: pd.DataFrame, refresh_seconds: float):
     )
     fig.update_traces(textinfo='percent+label', textposition='inside')
     
-    st.plotly_chart(fig, width=" stretch\)
+    st.plotly_chart(fig, width="stretch")
