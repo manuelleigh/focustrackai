@@ -97,6 +97,59 @@ def _parse_optional_iso_datetime(raw_value: str) -> str | None:
     return datetime.fromisoformat(value).isoformat()
 
 
+def _save_session_note(
+    storage: StorageManager,
+    session_id: str,
+    name: str,
+    description: str,
+    approved_for_training: bool,
+    status: str,
+) -> None:
+    storage.upsert_session_note(
+        session_id=session_id,
+        name=name,
+        description=description,
+        approved_for_training=approved_for_training,
+        status=status,
+    )
+    storage.append_audit_event(
+        "session_note_updated",
+        {
+            "name": name,
+            "status": status,
+            "approved_for_training": approved_for_training,
+        },
+        session_id=session_id,
+    )
+
+
+def _register_human_label(
+    storage: StorageManager,
+    session_id: str,
+    label: str,
+    start_time: str | None,
+    end_time: str | None,
+    notes: str,
+) -> None:
+    storage.append_human_label(
+        session_id=session_id,
+        label=label,
+        start_time=start_time,
+        end_time=end_time,
+        notes=notes,
+    )
+    storage.append_audit_event(
+        "human_label_registered",
+        {
+            "label": label,
+            "start_time": start_time,
+            "end_time": end_time,
+            "notes": notes,
+        },
+        session_id=session_id,
+    )
+
+
 def _status_label(status: str) -> str:
     labels = {
         "registrada": "Registrada",
@@ -458,7 +511,8 @@ def _render_session_notes(storage: StorageManager, session_id: str) -> None:
         if not session_id:
             st.error("No hay una sesion activa o seleccionada para guardar la nota.")
             return
-        storage.upsert_session_note(
+        _save_session_note(
+            storage=storage,
             session_id=session_id,
             name=name,
             description=description,
@@ -495,7 +549,8 @@ def _render_human_labels(storage: StorageManager, session_id: str) -> None:
         except ValueError:
             st.error("Las fechas deben estar en formato ISO valido, por ejemplo 2026-06-01T10:30:00.")
             return
-        storage.append_human_label(
+        _register_human_label(
+            storage=storage,
             session_id=session_id,
             label=label,
             start_time=parsed_start,

@@ -1,8 +1,16 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
+from pathlib import Path
 
-from app import _build_alert_signature, _evaluate_alert, _rule_label
+from app import (
+    _build_alert_signature,
+    _evaluate_alert,
+    _register_human_label,
+    _rule_label,
+    _save_session_note,
+)
 from focustrack.models import (
     AttentionMetrics,
     ObjectMetrics,
@@ -10,6 +18,7 @@ from focustrack.models import (
     ProductivitySnapshot,
     ScreenMetrics,
 )
+from focustrack.monitoring.storage import StorageManager
 
 
 class AppAlertTests(unittest.TestCase):
@@ -71,6 +80,40 @@ class AppAlertTests(unittest.TestCase):
 
     def test_rule_label_is_human_readable(self) -> None:
         self.assertEqual(_rule_label("productivity_low"), "Productividad baja")
+
+    def test_save_session_note_registers_audit_event(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage = StorageManager(Path(temp_dir))
+            _save_session_note(
+                storage=storage,
+                session_id="session-demo",
+                name="Sesion demo",
+                description="Actualizada desde UI",
+                approved_for_training=True,
+                status="en_revision",
+            )
+            notes = storage.load_session_notes(session_id="session-demo")
+            events = storage.load_audit_events(limit=10, session_id="session-demo")
+            self.assertEqual(len(notes), 1)
+            self.assertEqual(notes.iloc[0]["status"], "en_revision")
+            self.assertEqual(events.iloc[-1]["event_type"], "session_note_updated")
+
+    def test_register_human_label_registers_audit_event(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage = StorageManager(Path(temp_dir))
+            _register_human_label(
+                storage=storage,
+                session_id="session-demo",
+                label="Productivo",
+                start_time="2026-06-01T10:00:00",
+                end_time="2026-06-01T10:05:00",
+                notes="Revision manual",
+            )
+            labels = storage.load_human_labels(session_id="session-demo")
+            events = storage.load_audit_events(limit=10, session_id="session-demo")
+            self.assertEqual(len(labels), 1)
+            self.assertEqual(labels.iloc[0]["label"], "Productivo")
+            self.assertEqual(events.iloc[-1]["event_type"], "human_label_registered")
 
 
 if __name__ == "__main__":
