@@ -36,7 +36,7 @@ class FocusTrackMonitor:
         if self.capture is not None and self.capture.isOpened():
             return
 
-        self.capture = cv2.VideoCapture(self.camera_index)
+        self.capture = cv2.VideoCapture(self.camera_index, cv2.CAP_AVFOUNDATION)
         self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.camera_width)
         self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.camera_height)
 

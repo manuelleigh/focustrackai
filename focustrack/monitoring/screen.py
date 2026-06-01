@@ -93,5 +93,5 @@ class ScreenActivityMonitor:
         if not candidates:
             return "Desconocida"
 
-        most_active = max(candidates, key=lambda item: item.get("cpu_percent", 0.0))
+        most_active = max(candidates, key=lambda item: item.get("cpu_percent") or 0.0)
         return most_active.get("name") or "Desconocida"

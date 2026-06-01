@@ -6,16 +6,168 @@ import cv2
 import pandas as pd
 import streamlit as st
 
+from focustrack.ai.classifier import model_path, predict_history, train_classifier
 from focustrack.config import FocusTrackConfig, OptionalModels, ProductivityWeights
 from focustrack.monitor import FocusTrackMonitor
 from focustrack.monitoring.storage import StorageManager
+from focustrack.reporting.session_report import (
+    available_sessions,
+    build_critical_events,
+    build_recommendations,
+    build_session_summary,
+    export_report_excel,
+    export_report_html,
+    filter_session,
+)
 
 
 st.set_page_config(
     page_title="FocusTrack AI",
-    page_icon=":brain:",
+    page_icon="FT",
     layout="wide",
 )
+
+
+def _inject_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        .stApp {
+            background: linear-gradient(180deg, #f8fafc 0%, #eef4ff 100%);
+            color: #0f172a;
+        }
+        section[data-testid="stSidebar"] {
+            background: #0f172a;
+            border-right: 1px solid #1e293b;
+        }
+        section[data-testid="stSidebar"] * {
+            color: #e5edf8 !important;
+        }
+        section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
+            color: #cbd5e1 !important;
+            font-weight: 650;
+        }
+        .block-container {
+            max-width: 1320px;
+            padding-top: 3.1rem;
+            padding-bottom: 3rem;
+        }
+        h1 {
+            color: #0f172a;
+            font-size: 2.15rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0 !important;
+            font-weight: 760 !important;
+            margin-bottom: 0.35rem !important;
+        }
+        h2, h3 {
+            color: #0f172a;
+            letter-spacing: 0 !important;
+        }
+        h2 {
+            font-size: 1.35rem !important;
+        }
+        .ft-hero {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 22px 24px;
+            box-shadow: 0 14px 36px rgba(15, 23, 42, 0.07);
+            margin-bottom: 16px;
+        }
+        .ft-kicker {
+            color: #1d4ed8;
+            font-size: 0.78rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 8px;
+        }
+        .ft-subtitle {
+            max-width: 900px;
+            color: #64748b;
+            font-size: 0.98rem;
+            line-height: 1.55;
+            margin-top: 8px;
+        }
+        .ft-notice {
+            border: 1px solid #bfdbfe;
+            background: #eff6ff;
+            color: #1e3a8a;
+            border-radius: 8px;
+            padding: 13px 16px;
+            margin: 14px 0 16px 0;
+            font-size: 0.94rem;
+        }
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 4px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .stTabs [data-baseweb="tab"] {
+            height: 42px;
+            padding: 0 14px;
+            border-radius: 6px 6px 0 0;
+            font-weight: 650;
+            color: #475569;
+        }
+        .stTabs [aria-selected="true"] {
+            color: #1d4ed8 !important;
+            background: #eff6ff;
+        }
+        div.stButton > button:first-child,
+        div.stDownloadButton > button:first-child {
+            border-radius: 7px;
+            height: 42px;
+            font-weight: 700;
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            color: #0f172a;
+        }
+        div.stButton > button:first-child:hover,
+        div.stDownloadButton > button:first-child:hover {
+            background: #f1f5f9;
+            border-color: #94a3b8;
+            color: #0f172a;
+        }
+        div.stButton > button[kind="primary"] {
+            background: #1d4ed8;
+            border-color: #1d4ed8;
+            color: #ffffff;
+        }
+        div.stButton > button[kind="primary"]:hover {
+            background: #1e3a8a;
+            border-color: #1e3a8a;
+            color: #ffffff;
+        }
+        [data-testid="stMetric"] {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 14px 16px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+        }
+        [data-testid="stMetricLabel"] p {
+            color: #64748b !important;
+            font-weight: 650;
+        }
+        div[data-testid="stDataFrame"] {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        code {
+            color: #0f766e !important;
+            background: #ecfdf5 !important;
+            border-radius: 4px;
+            padding: 0.1rem 0.25rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+_inject_styles()
 
 
 def _normalize_weights(raw_weights: dict[str, float]) -> ProductivityWeights:
@@ -111,12 +263,129 @@ def _render_history(history: pd.DataFrame, refresh_seconds: float) -> None:
     st.dataframe(history.tail(20)[cols], use_container_width=True, hide_index=True)
 
 
+def _render_report_panel(history: pd.DataFrame, refresh_seconds: float, data_dir) -> None:
+    st.subheader("Reporte exportable")
+    if history.empty:
+        st.info("Aun no hay datos para generar reportes.")
+        return
+
+    sessions = ["Todas"] + available_sessions(history)
+    selected_session = st.selectbox("Sesion a reportar", sessions, index=len(sessions) - 1)
+    session_history = filter_session(history, selected_session)
+
+    if session_history.empty:
+        st.warning("La sesion seleccionada no tiene datos.")
+        return
+
+    summary = build_session_summary(session_history, refresh_seconds)
+    metric_1, metric_2, metric_3, metric_4 = st.columns(4)
+    metric_1.metric("Promedio", f"{summary['score_promedio']:.1f}")
+    metric_2.metric("Tiempo total", f"{summary['tiempo_total_min']:.2f} min")
+    metric_3.metric("Tiempo distraido", f"{summary['tiempo_distraido_min']:.2f} min")
+    metric_4.metric("Eventos criticos", str(summary["eventos_criticos"]))
+
+    st.markdown("**Recomendaciones automaticas**")
+    for recommendation in build_recommendations(summary, session_history):
+        st.write(f"- {recommendation}")
+
+    critical_events = build_critical_events(session_history)
+    if not critical_events.empty:
+        st.markdown("**Eventos criticos recientes**")
+        st.dataframe(critical_events, use_container_width=True, hide_index=True)
+
+    excel_bytes = export_report_excel(session_history, refresh_seconds)
+    html_report = export_report_html(session_history, refresh_seconds).encode("utf-8")
+    report_name = str(selected_session).replace(" ", "_").lower()
+
+    download_left, download_right = st.columns(2)
+    with download_left:
+        st.download_button(
+            "Descargar Excel",
+            data=excel_bytes,
+            file_name=f"focustrack_reporte_{report_name}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+    with download_right:
+        st.download_button(
+            "Descargar HTML",
+            data=html_report,
+            file_name=f"focustrack_reporte_{report_name}.html",
+            mime="text/html",
+            use_container_width=True,
+        )
+
+
+def _render_ai_panel(history: pd.DataFrame, data_dir) -> None:
+    st.subheader("Modelo IA de clasificacion")
+    st.caption("Entrena un Random Forest para clasificar cada registro como Productivo, Regular o Distraido.")
+
+    model_file = model_path(data_dir)
+    if model_file.exists():
+        st.success(f"Modelo disponible: {model_file.name}")
+    else:
+        st.info("Aun no hay modelo entrenado. Puedes entrenarlo con historico real o con datos simulados para demo.")
+
+    if st.button("Entrenar / actualizar modelo IA", type="primary", use_container_width=True):
+        result = train_classifier(history, data_dir)
+        if result.trained:
+            st.success(result.message)
+            st.write(f"Fuente: `{result.source}` | Filas usadas: `{result.rows}` | Clases: `{', '.join(result.labels)}`")
+            if result.accuracy is not None:
+                st.metric("Accuracy de validacion", f"{result.accuracy:.2%}")
+            if result.report:
+                st.text(result.report)
+        else:
+            st.error(result.message)
+
+    predictions = predict_history(history.tail(200), data_dir)
+    if predictions.empty:
+        return
+
+    st.markdown("**Predicciones recientes del modelo**")
+    columns = [
+        "timestamp",
+        "productivity_label",
+        "ai_prediction",
+        "ai_confidence",
+        "productivity_score",
+        "attention_state",
+        "object_state",
+        "screen_category",
+    ]
+    available_columns = [column for column in columns if column in predictions.columns]
+    st.dataframe(predictions.tail(30)[available_columns], use_container_width=True, hide_index=True)
+
+    agreement = (predictions["productivity_label"].astype(str) == predictions["ai_prediction"].astype(str)).mean()
+    st.metric("Coincidencia IA vs regla", f"{agreement:.2%}")
+
+
 def _frame_to_rgb(frame):
     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
 
-st.title("Sistema Inteligente de Monitoreo de Rendimiento y Distraccion Laboral")
-st.caption("Vision por computadora + reglas de IA para estimar atencion, fatiga, postura, distracciones y actividad en PC.")
+st.markdown(
+    """
+    <div class="ft-hero">
+        <div class="ft-kicker">Analitica laboral asistida por IA</div>
+        <h1>FocusTrack AI</h1>
+        <div class="ft-subtitle">
+            Sistema local para analizar atencion visual, postura, distracciones y actividad digital mediante
+            vision por computadora, reglas explicables y clasificacion supervisada.
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+st.markdown(
+    """
+    <div class="ft-notice">
+        Uso responsable: el sistema requiere consentimiento informado. Las capturas estan desactivadas por defecto;
+        el historial y los modelos se almacenan localmente.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 config, camera_index, refresh_seconds = _build_config()
 storage = StorageManager(config.data_dir)
@@ -162,8 +431,8 @@ with info_col:
         """
         **Que detecta esta demo**
 
-        - Rostro, ojos, EAR y mirada con `OpenCV + MediaPipe`, con soporte opcional para `dlib`.
-        - Postura corporal usando `MediaPipe Pose`.
+        - Rostro, ojos, EAR y mirada con `MediaPipe` si la instalacion expone `solutions`; si no, usa fallback con `OpenCV`.
+        - Postura corporal con `MediaPipe Pose` o una estimacion visual de respaldo con `OpenCV`.
         - Celular y objetos si `YOLO` esta disponible; si no, usa heuristicas de manos y ausencia.
         - Aplicacion activa y clasificacion trabajo vs distraccion en el escritorio.
         """
@@ -198,6 +467,13 @@ else:
 
 history = storage.load_history(limit=400)
 _render_history(history, refresh_seconds)
+
+full_history = storage.load_history()
+report_tab, ai_tab = st.tabs(["Reporte de sesion", "Clasificador IA"])
+with report_tab:
+    _render_report_panel(full_history, refresh_seconds, config.data_dir)
+with ai_tab:
+    _render_ai_panel(full_history, config.data_dir)
 
 if st.session_state.monitor_running:
     time.sleep(refresh_seconds)

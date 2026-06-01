@@ -23,6 +23,23 @@ class StorageManager:
         self.append_history_row(row)
         write_header = not self.csv_path.exists()
 
+    def append_history_row(self, row: dict[str, object]) -> None:
+        self._append_snapshot_sqlite(row)
+
+    def append_history_rows(self, rows: list[dict[str, object]]) -> None:
+        for row in rows:
+            self.append_history_row(row)
+
+        if not rows:
+            return
+        write_header = not self.csv_path.exists()
+
+        with self.csv_path.open("a", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
+            if write_header:
+                writer.writeheader()
+            writer.writerows(rows)
+
         with self.csv_path.open("a", newline="", encoding="utf-8") as handle:
             writer = csv.DictWriter(handle, fieldnames=list(row.keys()))
             if write_header:
@@ -84,7 +101,7 @@ class StorageManager:
             frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
         return frame
     
-     def storage_health(self) -> dict[str, object]:
+    def storage_health(self) -> dict[str, object]:
         snapshot_count = 0
         audit_count = 0
         with self._connect() as connection:
@@ -304,18 +321,22 @@ class StorageManager:
                 ),
             )
 
-    def _append_snapshot_sqlite(self, row: dict[str, object]) -> None:
+    def _load_history_sqlite(self, limit: int | None = None) -> pd.DataFrame:
+        query = "select payload_json from snapshots order by id"
+        params: tuple[object, ...] = ()
+        if limit is not None:
+            query += " desc limit ?"
+            params = (limit,)
+
         with self._connect() as connection:
-            connection.execute(
-                """
-                insert into snapshots(timestamp, session_id, productivity_label, productivity_score, payload_json)
-                values (?, ?, ?, ?, ?)
-                """,
-                (
-                    str(row.get("timestamp", "")),
-                    str(row.get("session_id", "")),
-                    str(row.get("productivity_label", "")),
-                    float(row.get("productivity_score", 0.0) or 0.0),
-                    json.dumps(row, ensure_ascii=False, default=str),
-                ),
-            )
+            rows = connection.execute(query, params).fetchall()
+
+        if limit is not None:
+            rows = list(reversed(rows))
+        if not rows:
+            return pd.DataFrame()
+
+        history = pd.DataFrame([json.loads(row[0]) for row in rows])
+        if "timestamp" in history.columns:
+            history["timestamp"] = pd.to_datetime(history["timestamp"], errors="coerce")
+        return history

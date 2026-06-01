@@ -27,6 +27,7 @@ class PostureMetrics:
     shoulder_tilt: float | None = None
     torso_lean: float | None = None
     head_offset: float | None = None
+    confidence: float | None = None
 
 
 @dataclass
@@ -36,6 +37,7 @@ class ObjectMetrics:
     person_present: bool = False
     object_state: str = "sin_objetos"
     backend: str = "heuristico"
+    confidence: float | None = None
 
 
 @dataclass
