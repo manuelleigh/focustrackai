@@ -12,7 +12,9 @@ from focustrack.config import FocusTrackConfig, OptionalModels, ProductivityWeig
 from focustrack.engine.evaluation import build_labeled_dataset, evaluate_label_predictions
 from focustrack.monitor import FocusTrackMonitor
 from focustrack.monitoring.storage import StorageManager
-
+from ui.style import inject_custom_css
+from ui.charts import render_score_chart, render_app_usage_chart
+from ui.components import render_live_indicator, render_empty_state, render_gauge_score
 
 def _normalize_weights(raw_weights: dict[str, float]) -> ProductivityWeights:
     total = sum(raw_weights.values()) or 1.0
@@ -22,64 +24,6 @@ def _normalize_weights(raw_weights: dict[str, float]) -> ProductivityWeights:
         posture=raw_weights["posture"] / total,
         screen=raw_weights["screen"] / total,
     )
-
-
-def _inject_custom_css():
-    st.markdown("""
-        <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-        :root {
-            --primary: #4F46E5;
-            --background: #111827;
-            --card-bg: #1F2937;
-            --text-main: #F9FAFB;
-            --text-muted: #9CA3AF;
-        }
-        
-        html, body, [class*="css"] {
-            font-family: 'Inter', sans-serif !important;
-        }
-
-        /* Contenedores (Cards) */
-        div[data-testid="stMetric"], div.stDataFrame, div[data-testid="stExpander"] {
-            background-color: var(--card-bg) !important;
-            padding: 1rem !important;
-            border-radius: 0.75rem !important;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
-            border: 1px solid rgba(255, 255, 255, 0.05) !important;
-        }
-
-        /* Tabs styling */
-        div.stTabs [data-baseweb="tab"] {
-            padding: 0.5rem 1rem !important;
-            border-radius: 0.5rem !important;
-            margin-right: 0.5rem !important;
-            background: transparent !important;
-            color: var(--text-muted) !important;
-            transition: all 0.3s ease !important;
-        }
-        div.stTabs [aria-selected="true"] {
-            background-color: var(--primary) !important;
-            color: white !important;
-            box-shadow: 0 4px 14px 0 rgba(79, 70, 229, 0.39) !important;
-        }
-
-        /* Botones primarios */
-        button[kind="primary"] {
-            background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%) !important;
-            border: none !important;
-            color: white !important;
-            box-shadow: 0 4px 14px 0 rgba(79, 70, 229, 0.39) !important;
-            border-radius: 0.5rem !important;
-            font-weight: 600 !important;
-            transition: transform 0.2s !important;
-        }
-        button[kind="primary"]:hover {
-            transform: translateY(-2px) !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
 
 
 def _build_config() -> tuple[FocusTrackConfig, int, float]:
@@ -260,54 +204,11 @@ def _render_kpis(history: pd.DataFrame) -> None:
 
     last = history.iloc[-1]
     metric_1, metric_2, metric_3, metric_4 = st.columns(4)
-    metric_1.metric("Score actual", f"{last['productivity_score']:.1f}")
+    with metric_1:
+        render_gauge_score(float(last['productivity_score']))
     metric_2.metric("Clasificacion", str(last.get("productivity_label", "")))
     metric_3.metric("Atencion", str(last.get("attention_state", "")))
     metric_4.metric("App activa", str(last.get("active_app", "")))
-
-
-def _render_history(history: pd.DataFrame, refresh_seconds: float, session_id: str) -> None:
-    if history.empty:
-        if session_id:
-            st.info("La sesion seleccionada aun no tiene historial consolidado.")
-        return
-
-    history = history.copy().dropna(subset=["timestamp"])
-    if history.empty:
-        return
-
-    chart_left, chart_right = st.columns(2)
-    with chart_left:
-        st.subheader("Score en el tiempo")
-        score_chart = history.set_index("timestamp")[["productivity_score"]].tail(120)
-        st.line_chart(score_chart)
-
-    with chart_right:
-        st.subheader("Tiempo estimado por aplicacion")
-        time_by_app = (
-            history.tail(120)
-            .groupby("active_app")
-            .size()
-            .sort_values(ascending=False)
-            .head(8)
-            .mul(refresh_seconds)
-            .rename("segundos")
-        )
-        st.bar_chart(time_by_app)
-
-    cols = [
-        "timestamp",
-        "productivity_score",
-        "productivity_label",
-        "attention_state",
-        "posture_state",
-        "object_state",
-        "active_app",
-        "screen_category",
-    ]
-    visible_columns = [column for column in cols if column in history.columns]
-    st.subheader("Ultimos eventos")
-    st.dataframe(history.tail(20)[visible_columns], use_container_width=True, hide_index=True)
 
 
 def _render_storage_health(storage: StorageManager) -> None:
@@ -801,6 +702,7 @@ def main() -> None:
     # --- TAB 1: DASHBOARD ---
     with tab_dashboard:
         st.header("Monitor de Productividad")
+        render_live_indicator(st.session_state.monitor_running)
         controls_left, controls_right = st.columns([1, 1])
         with controls_left:
             start_clicked = st.button(
@@ -875,12 +777,26 @@ def main() -> None:
                     use_container_width=True,
                 )
             else:
-                frame_placeholder.info("El frame analizado aparecerá aquí al iniciar el monitoreo.")
+                with frame_placeholder.container():
+                    render_empty_state()
 
     # --- TAB 2: ANALYTICS ---
     with tab_analytics:
         st.header("Analítica de la Sesión")
-        _render_history(history, refresh_seconds, selected_session_id)
+        if history.empty:
+            st.info("La sesion seleccionada aun no tiene historial consolidado.")
+        else:
+            chart_left, chart_right = st.columns(2)
+            with chart_left:
+                render_score_chart(history)
+            with chart_right:
+                render_app_usage_chart(history, refresh_seconds)
+                
+            cols = ["timestamp", "productivity_score", "productivity_label", "attention_state", "posture_state", "object_state", "active_app", "screen_category"]
+            visible_columns = [c for c in cols if c in history.columns]
+            st.subheader("Ultimos eventos")
+            st.dataframe(history.tail(20)[visible_columns], use_container_width=True, hide_index=True)
+
         st.divider()
         _render_session_analytics(storage, active_session_id)
 
