@@ -676,7 +676,7 @@ def _handle_monitor_stop() -> None:
 
 def main() -> None:
     st.set_page_config(page_title="FocusTrack AI", page_icon=":material/psychology:", layout="wide")
-    _inject_custom_css()
+    inject_custom_css()
     
     st.title(":material/psychology: FocusTrack AI")
     st.caption(
