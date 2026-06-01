@@ -167,6 +167,24 @@ class StorageManager:
         history.to_csv(destination, index=False, encoding="utf-8")
         return destination
 
+    def export_audit_csv(
+        self,
+        destination: Path,
+        session_id: str | None = None,
+        limit: int | None = None,
+    ) -> Path:
+        events = self.load_audit_events(limit=limit, session_id=session_id)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        export_frame = events.copy()
+        if not export_frame.empty and "details" in export_frame.columns:
+            export_frame["details"] = export_frame["details"].apply(
+                lambda value: json.dumps(value, ensure_ascii=False, default=str)
+                if isinstance(value, (dict, list))
+                else value
+            )
+        export_frame.to_csv(destination, index=False, encoding="utf-8")
+        return destination
+
     def append_audit_event(
         self,
         event_type: str,

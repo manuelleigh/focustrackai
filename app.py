@@ -273,6 +273,11 @@ def _build_export_path(storage: StorageManager, session_id: str) -> Path:
     return storage.data_dir / "exports" / export_name
 
 
+def _build_audit_export_path(storage: StorageManager, session_id: str) -> Path:
+    export_name = f"auditoria_{session_id or 'global'}.csv"
+    return storage.data_dir / "exports" / export_name
+
+
 def _render_history_export(storage: StorageManager, session_id: str) -> None:
     st.subheader("Exportacion")
     export_limit = int(
@@ -292,6 +297,15 @@ def _render_history_export(storage: StorageManager, session_id: str) -> None:
             limit=export_limit,
         )
         st.success(f"Exportacion generada en: {export_path}")
+
+    if st.button("Generar exportacion de auditoria", use_container_width=True):
+        export_path = _build_audit_export_path(storage, session_id)
+        storage.export_audit_csv(
+            destination=export_path,
+            session_id=session_id or None,
+            limit=export_limit,
+        )
+        st.success(f"Auditoria exportada en: {export_path}")
 
 
 def _render_session_summary(selected_session_id: str, sessions: pd.DataFrame) -> None:

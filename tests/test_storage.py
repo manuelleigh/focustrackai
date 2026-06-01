@@ -309,6 +309,31 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(len(exported), 1)
         self.assertEqual(exported.iloc[0]["session_id"], "session-export-a")
 
+    def test_export_audit_csv_respects_session_filter(self) -> None:
+        self.storage.append_audit_event(
+            "monitor_started",
+            {"camera_index": 0},
+            session_id="session-audit-a",
+        )
+        self.storage.append_audit_event(
+            "monitor_stopped",
+            {"camera_index": 1},
+            session_id="session-audit-b",
+        )
+
+        export_path = self.data_dir / "exports" / "session-audit-a.csv"
+        result_path = self.storage.export_audit_csv(
+            destination=export_path,
+            session_id="session-audit-a",
+            limit=100,
+        )
+
+        exported = pd.read_csv(result_path)
+        self.assertTrue(result_path.exists())
+        self.assertEqual(len(exported), 1)
+        self.assertEqual(exported.iloc[0]["session_id"], "session-audit-a")
+        self.assertEqual(exported.iloc[0]["event_type"], "monitor_started")
+
 
 if __name__ == "__main__":
     unittest.main()
