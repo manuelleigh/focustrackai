@@ -141,8 +141,10 @@ def _render_kpis(history: pd.DataFrame) -> None:
     metric_4.metric("App activa", str(last.get("active_app", "")))
 
 
-def _render_history(history: pd.DataFrame, refresh_seconds: float) -> None:
+def _render_history(history: pd.DataFrame, refresh_seconds: float, session_id: str) -> None:
     if history.empty:
+        if session_id:
+            st.info("La sesion seleccionada aun no tiene historial consolidado.")
         return
 
     history = history.copy().dropna(subset=["timestamp"])
@@ -383,11 +385,14 @@ def _render_human_labels(storage: StorageManager, session_id: str) -> None:
         st.dataframe(labels, use_container_width=True, hide_index=True)
 
 
-def _render_audit_events(storage: StorageManager) -> None:
+def _render_audit_events(storage: StorageManager, session_id: str) -> None:
     st.subheader("Auditoria reciente")
-    events = storage.load_audit_events(limit=50)
+    events = storage.load_audit_events(limit=50, session_id=session_id or None)
     if events.empty:
-        st.info("Aun no hay eventos de auditoria.")
+        if session_id:
+            st.info("La sesion seleccionada aun no tiene eventos de auditoria.")
+        else:
+            st.info("Aun no hay eventos de auditoria.")
         return
     st.dataframe(events, use_container_width=True, hide_index=True)
 
@@ -448,9 +453,7 @@ def main() -> None:
     if stop_clicked:
         _handle_monitor_stop()
 
-    history = storage.load_history(limit=400)
-    if selected_session_id and not history.empty and "session_id" in history.columns:
-        history = history[history["session_id"] == selected_session_id]
+    history = storage.load_history(limit=400, session_id=selected_session_id or None)
     _render_kpis(history)
 
     rules_map = storage.get_alert_rules_map()
@@ -463,8 +466,10 @@ def main() -> None:
             st.session_state.last_frame = frame
             st.session_state.last_snapshot = snapshot
             st.session_state.active_session_id = st.session_state.monitor.session_id
-            history = storage.load_history(limit=400)
-            history = history[history["session_id"] == st.session_state.monitor.session_id]
+            history = storage.load_history(
+                limit=400,
+                session_id=st.session_state.monitor.session_id,
+            )
         except Exception as exc:
             alert_placeholder.error(f"Error de monitoreo: {exc}")
             _handle_monitor_stop()
@@ -488,7 +493,7 @@ def main() -> None:
     else:
         frame_placeholder.info("Cuando inicies el monitoreo se mostrara aqui el frame anotado en tiempo real.")
 
-    _render_history(history, refresh_seconds)
+    _render_history(history, refresh_seconds, selected_session_id)
     _render_storage_health(storage)
     _render_session_summary(selected_session_id or _get_active_session_id(), sessions)
 
@@ -506,7 +511,7 @@ def main() -> None:
     with labels_tab:
         _render_human_labels(storage, session_id)
     with audit_tab:
-        _render_audit_events(storage)
+        _render_audit_events(storage, session_id)
 
     if st.session_state.monitor_running:
         time.sleep(refresh_seconds)

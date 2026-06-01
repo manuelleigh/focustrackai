@@ -153,6 +153,54 @@ class StorageTests(unittest.TestCase):
         self.assertTrue(bool(summary["approved_for_training"]))
         self.assertAlmostEqual(float(summary["avg_productivity_score"]), 70.0, places=2)
 
+    def test_history_and_audit_can_be_filtered_by_session(self) -> None:
+        self.storage.append_audit_event(
+            "monitor_started",
+            {"camera_index": 0},
+            session_id="session-a",
+        )
+        self.storage.append_audit_event(
+            "monitor_started",
+            {"camera_index": 1},
+            session_id="session-b",
+        )
+        self.storage.append_snapshot(
+            ProductivitySnapshot(
+                session_id="session-a",
+                attention=AttentionMetrics(attention_state="atento"),
+                posture=PostureMetrics(posture_state="correcta", posture_score=90.0, confidence=0.8),
+                objects=ObjectMetrics(person_present=True, confidence=0.5),
+                screen=ScreenMetrics(active_app="Code", category="trabajo", productivity_score=90.0),
+                productivity_score=90.0,
+                productivity_label="Productivo",
+            )
+        )
+        self.storage.append_snapshot(
+            ProductivitySnapshot(
+                session_id="session-b",
+                attention=AttentionMetrics(attention_state="desviado"),
+                posture=PostureMetrics(posture_state="mejorable", posture_score=55.0, confidence=0.5),
+                objects=ObjectMetrics(person_present=True, confidence=0.4),
+                screen=ScreenMetrics(active_app="Browser", category="neutral", productivity_score=55.0),
+                productivity_score=55.0,
+                productivity_label="Regular",
+            )
+        )
+
+        history_a = self.storage.load_history(limit=50, session_id="session-a")
+        history_b = self.storage.load_history(limit=50, session_id="session-b")
+        events_a = self.storage.load_audit_events(limit=50, session_id="session-a")
+        events_b = self.storage.load_audit_events(limit=50, session_id="session-b")
+
+        self.assertEqual(len(history_a), 1)
+        self.assertEqual(history_a.iloc[0]["session_id"], "session-a")
+        self.assertEqual(len(history_b), 1)
+        self.assertEqual(history_b.iloc[0]["session_id"], "session-b")
+        self.assertEqual(len(events_a), 1)
+        self.assertEqual(events_a.iloc[0]["session_id"], "session-a")
+        self.assertEqual(len(events_b), 1)
+        self.assertEqual(events_b.iloc[0]["session_id"], "session-b")
+
 
 if __name__ == "__main__":
     unittest.main()

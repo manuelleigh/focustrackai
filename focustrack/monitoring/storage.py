@@ -47,8 +47,10 @@ class StorageManager:
         self._append_snapshot_sqlite(row)
         self._append_snapshot_csv(row)
 
-    def load_history(self, limit: int | None = None) -> pd.DataFrame:
-        sqlite_history = self._load_history_sqlite(limit)
+    def load_history(
+        self, limit: int | None = None, session_id: str | None = None
+    ) -> pd.DataFrame:
+        sqlite_history = self._load_history_sqlite(limit=limit, session_id=session_id)
         if not sqlite_history.empty:
             return sqlite_history
 
@@ -56,6 +58,8 @@ class StorageManager:
             return pd.DataFrame()
 
         history = pd.read_csv(self.csv_path)
+        if session_id and "session_id" in history.columns:
+            history = history[history["session_id"] == session_id]
         return self._normalize_history_frame(history, limit)
 
     def load_session_summaries(self, limit: int = 20) -> pd.DataFrame:
@@ -124,16 +128,21 @@ class StorageManager:
                 ),
             )
 
-    def load_audit_events(self, limit: int | None = 200) -> pd.DataFrame:
+    def load_audit_events(
+        self, limit: int | None = 200, session_id: str | None = None
+    ) -> pd.DataFrame:
         query = """
             select timestamp, event_type, session_id, details_json
             from audit_events
-            order by id desc
         """
         params: tuple[object, ...] = ()
+        if session_id:
+            query += " where session_id = ?"
+            params = (session_id,)
+        query += " order by id desc"
         if limit is not None:
             query += " limit ?"
-            params = (limit,)
+            params = params + (limit,)
 
         with self._connect() as connection:
             rows = connection.execute(query, params).fetchall()
@@ -402,18 +411,23 @@ class StorageManager:
                 ),
             )
 
-    def _load_history_sqlite(self, limit: int | None = None) -> pd.DataFrame:
+    def _load_history_sqlite(
+        self, limit: int | None = None, session_id: str | None = None
+    ) -> pd.DataFrame:
         query = """
             select timestamp, session_id, productivity_score, productivity_label,
                    attention_state, posture_state, object_state, active_app,
                    screen_category, payload_json
             from snapshots
-            order by id desc
         """
         params: tuple[object, ...] = ()
+        if session_id:
+            query += " where session_id = ?"
+            params = (session_id,)
+        query += " order by id desc"
         if limit is not None:
             query += " limit ?"
-            params = (limit,)
+            params = params + (limit,)
 
         with self._connect() as connection:
             rows = connection.execute(query, params).fetchall()
