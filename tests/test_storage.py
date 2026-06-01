@@ -201,6 +201,50 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(len(events_b), 1)
         self.assertEqual(events_b.iloc[0]["session_id"], "session-b")
 
+    def test_load_session_analytics_returns_breakdowns(self) -> None:
+        self.storage.append_snapshot(
+            ProductivitySnapshot(
+                session_id="session-analytics",
+                attention=AttentionMetrics(attention_state="atento"),
+                posture=PostureMetrics(posture_state="correcta", posture_score=90.0, confidence=0.8),
+                objects=ObjectMetrics(person_present=True, confidence=0.5),
+                screen=ScreenMetrics(active_app="Code", category="trabajo", productivity_score=95.0),
+                productivity_score=90.0,
+                productivity_label="Productivo",
+            )
+        )
+        self.storage.append_snapshot(
+            ProductivitySnapshot(
+                session_id="session-analytics",
+                attention=AttentionMetrics(attention_state="desviado"),
+                posture=PostureMetrics(posture_state="mejorable", posture_score=65.0, confidence=0.6),
+                objects=ObjectMetrics(person_present=True, confidence=0.5),
+                screen=ScreenMetrics(active_app="Code", category="trabajo", productivity_score=70.0),
+                productivity_score=70.0,
+                productivity_label="Regular",
+            )
+        )
+        self.storage.append_snapshot(
+            ProductivitySnapshot(
+                session_id="session-analytics",
+                attention=AttentionMetrics(attention_state="atento"),
+                posture=PostureMetrics(posture_state="correcta", posture_score=92.0, confidence=0.9),
+                objects=ObjectMetrics(person_present=True, confidence=0.6),
+                screen=ScreenMetrics(active_app="Code", category="trabajo", productivity_score=96.0),
+                productivity_score=95.0,
+                productivity_label="Productivo",
+            )
+        )
+
+        analytics = self.storage.load_session_analytics("session-analytics")
+
+        self.assertEqual(analytics["snapshot_count"], 3)
+        self.assertAlmostEqual(float(analytics["avg_productivity_score"]), 85.0, places=2)
+        self.assertEqual(analytics["dominant_productivity_label"], "Productivo")
+        self.assertEqual(analytics["dominant_app"], "Code")
+        self.assertEqual(analytics["productivity_breakdown"]["Productivo"], 2)
+        self.assertEqual(analytics["attention_breakdown"]["atento"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

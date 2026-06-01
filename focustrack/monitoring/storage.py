@@ -107,6 +107,53 @@ class StorageManager:
             frame["session_status"] = frame["session_status"].fillna("")
         return frame
 
+    def load_session_analytics(self, session_id: str) -> dict[str, object]:
+        history = self.load_history(limit=None, session_id=session_id)
+        if history.empty:
+            return {
+                "session_id": session_id,
+                "snapshot_count": 0,
+                "avg_productivity_score": None,
+                "productivity_breakdown": {},
+                "attention_breakdown": {},
+                "dominant_app": "",
+                "dominant_productivity_label": "",
+            }
+
+        productivity_breakdown = (
+            history["productivity_label"].fillna("Sin etiqueta").value_counts().to_dict()
+            if "productivity_label" in history.columns
+            else {}
+        )
+        attention_breakdown = (
+            history["attention_state"].fillna("sin_datos").value_counts().to_dict()
+            if "attention_state" in history.columns
+            else {}
+        )
+        dominant_app = ""
+        if "active_app" in history.columns and not history["active_app"].dropna().empty:
+            dominant_app = str(history["active_app"].fillna("Desconocida").value_counts().idxmax())
+
+        dominant_productivity_label = ""
+        if productivity_breakdown:
+            dominant_productivity_label = str(
+                max(productivity_breakdown.items(), key=lambda item: item[1])[0]
+            )
+
+        avg_score = None
+        if "productivity_score" in history.columns and not history["productivity_score"].dropna().empty:
+            avg_score = float(history["productivity_score"].mean())
+
+        return {
+            "session_id": session_id,
+            "snapshot_count": int(len(history)),
+            "avg_productivity_score": avg_score,
+            "productivity_breakdown": productivity_breakdown,
+            "attention_breakdown": attention_breakdown,
+            "dominant_app": dominant_app,
+            "dominant_productivity_label": dominant_productivity_label,
+        }
+
     def append_audit_event(
         self,
         event_type: str,

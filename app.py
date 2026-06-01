@@ -222,6 +222,61 @@ def _render_session_summary(selected_session_id: str, sessions: pd.DataFrame) ->
     )
 
 
+def _render_session_analytics(storage: StorageManager, session_id: str) -> None:
+    st.subheader("Analitica de sesion")
+    if not session_id:
+        st.info("Selecciona o inicia una sesion para ver analitica derivada.")
+        return
+
+    analytics = storage.load_session_analytics(session_id)
+    if int(analytics["snapshot_count"]) == 0:
+        st.info("La sesion seleccionada aun no tiene snapshots para analisis.")
+        return
+
+    cols = st.columns(3)
+    avg_score = analytics["avg_productivity_score"]
+    cols[0].metric(
+        "Score promedio consolidado",
+        f"{float(avg_score):.1f}" if avg_score is not None else "s/d",
+    )
+    cols[1].metric(
+        "Etiqueta dominante",
+        str(analytics["dominant_productivity_label"] or "s/d"),
+    )
+    cols[2].metric(
+        "Aplicacion principal",
+        str(analytics["dominant_app"] or "s/d"),
+    )
+
+    left, right = st.columns(2)
+    with left:
+        st.caption("Distribucion de productividad")
+        productivity_breakdown = analytics["productivity_breakdown"]
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {"etiqueta": label, "muestras": count}
+                    for label, count in productivity_breakdown.items()
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+    with right:
+        st.caption("Distribucion de atencion")
+        attention_breakdown = analytics["attention_breakdown"]
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {"estado": state, "muestras": count}
+                    for state, count in attention_breakdown.items()
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
 def _rule_label(rule_key: str) -> str:
     labels = {
         "productivity_low": "Productividad baja",
@@ -566,6 +621,7 @@ def main() -> None:
     _render_history(history, refresh_seconds, selected_session_id)
     _render_storage_health(storage)
     _render_session_summary(selected_session_id or _get_active_session_id(), sessions)
+    _render_session_analytics(storage, selected_session_id or _get_active_session_id())
     _render_alert_status(alert_result)
 
     session_id = active_session_id
