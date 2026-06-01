@@ -23,6 +23,7 @@ class DetectionThresholds:
     fatigue_frame_window: int = 8
     face_min_width_ratio: float = 0.10
     face_min_height_ratio: float = 0.12
+    temporal_consensus_window: int = 4
     face_presence_consensus_frames: int = 2
     attention_state_consensus_frames: int = 2
     shoulder_tilt_max: float = 0.08

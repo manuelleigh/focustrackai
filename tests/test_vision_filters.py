@@ -7,9 +7,17 @@ from focustrack.config import DetectionThresholds, OptionalModels
 from focustrack.vision.attention import AttentionAnalyzer
 from focustrack.vision.objects import ObjectAnalyzer
 from focustrack.vision.posture import PostureAnalyzer
+from focustrack.vision.temporal import TemporalConsensus
 
 
 class VisionFilterTests(unittest.TestCase):
+    def test_temporal_consensus_uses_majority_vote_in_window(self) -> None:
+        consensus = TemporalConsensus[str](window_size=4, min_votes=2)
+        self.assertEqual(consensus.update("atento"), "atento")
+        self.assertEqual(consensus.update("desviado"), "atento")
+        self.assertEqual(consensus.update("desviado"), "desviado")
+        self.assertEqual(consensus.update("desviado"), "desviado")
+
     def test_attention_rejects_tiny_face_bbox(self) -> None:
         analyzer = AttentionAnalyzer(DetectionThresholds())
         self.assertFalse(analyzer._valid_face_bbox((10, 10, 30, 30), 960, 540))

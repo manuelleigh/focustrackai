@@ -8,6 +8,7 @@ import numpy as np
 from focustrack.config import DetectionThresholds
 from focustrack.models import AttentionMetrics
 from focustrack.vision.mp_compat import HAS_MEDIAPIPE_SOLUTIONS, MP_SOLUTIONS
+from focustrack.vision.temporal import TemporalConsensus
 
 try:
     import dlib
@@ -45,11 +46,14 @@ class AttentionAnalyzer:
         self.closed_eye_frames = 0
         self.blink_count = 0
         self.previous_eyes_closed = False
-        self.face_present_frames = 0
-        self.face_absent_frames = 0
-        self.last_attention_candidate = "ausente"
-        self.stable_attention_state = "ausente"
-        self.attention_state_frames = 0
+        self.face_presence_consensus = TemporalConsensus[bool](
+            window_size=self.thresholds.temporal_consensus_window,
+            min_votes=self.thresholds.face_presence_consensus_frames,
+        )
+        self.attention_state_consensus = TemporalConsensus[str](
+            window_size=self.thresholds.temporal_consensus_window,
+            min_votes=self.thresholds.attention_state_consensus_frames,
+        )
         self.use_dlib = False
         self.dlib_detector = None
 
@@ -231,32 +235,17 @@ class AttentionAnalyzer:
         return bool(faces)
 
     def _stable_face_detected(self, candidate_detected: bool) -> bool:
-        if candidate_detected:
-            self.face_present_frames += 1
-            self.face_absent_frames = 0
-        else:
-            self.face_absent_frames += 1
-            self.face_present_frames = 0
-
-        if self.face_present_frames >= self.thresholds.face_presence_consensus_frames:
-            return True
-        if self.face_absent_frames >= self.thresholds.face_presence_consensus_frames:
+        stable_value = bool(self.face_presence_consensus.update(candidate_detected))
+        if (
+            candidate_detected
+            and len(self.face_presence_consensus.snapshot())
+            < self.thresholds.face_presence_consensus_frames
+        ):
             return False
-        return self.stable_attention_state != "ausente"
+        return stable_value
 
     def _stable_attention(self, candidate_state: str) -> str:
-        if candidate_state == self.last_attention_candidate:
-            self.attention_state_frames += 1
-        else:
-            self.last_attention_candidate = candidate_state
-            self.attention_state_frames = 1
-
-        if (
-            self.attention_state_frames
-            >= self.thresholds.attention_state_consensus_frames
-        ):
-            self.stable_attention_state = candidate_state
-        return self.stable_attention_state
+        return str(self.attention_state_consensus.update(candidate_state))
 
     def _valid_face_bbox(
         self,

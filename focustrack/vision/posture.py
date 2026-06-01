@@ -5,6 +5,7 @@ import cv2
 from focustrack.config import DetectionThresholds
 from focustrack.models import PostureMetrics
 from focustrack.vision.mp_compat import HAS_MEDIAPIPE_SOLUTIONS, MP_SOLUTIONS
+from focustrack.vision.temporal import TemporalConsensus
 
 
 class PostureAnalyzer:
@@ -18,9 +19,10 @@ class PostureAnalyzer:
     def __init__(self, thresholds: DetectionThresholds):
         self.thresholds = thresholds
         self.pose = None
-        self.last_posture_candidate = "sin_datos"
-        self.stable_posture_state = "sin_datos"
-        self.posture_state_frames = 0
+        self.posture_state_consensus = TemporalConsensus[str](
+            window_size=self.thresholds.temporal_consensus_window,
+            min_votes=self.thresholds.posture_state_consensus_frames,
+        )
         self.face_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
@@ -152,15 +154,4 @@ class PostureAnalyzer:
         return all(getattr(landmark, "visibility", 1.0) >= min_visibility for landmark in landmarks)
 
     def _stable_posture(self, candidate_state: str) -> str:
-        if candidate_state == self.last_posture_candidate:
-            self.posture_state_frames += 1
-        else:
-            self.last_posture_candidate = candidate_state
-            self.posture_state_frames = 1
-
-        if (
-            self.posture_state_frames
-            >= self.thresholds.posture_state_consensus_frames
-        ):
-            self.stable_posture_state = candidate_state
-        return self.stable_posture_state
+        return str(self.posture_state_consensus.update(candidate_state))

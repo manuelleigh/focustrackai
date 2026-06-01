@@ -5,6 +5,7 @@ import cv2
 from focustrack.config import DetectionThresholds, OptionalModels
 from focustrack.models import ObjectMetrics
 from focustrack.vision.mp_compat import HAS_MEDIAPIPE_SOLUTIONS, MP_SOLUTIONS
+from focustrack.vision.temporal import TemporalConsensus
 
 try:
     from ultralytics import YOLO
@@ -19,9 +20,18 @@ class ObjectAnalyzer:
         self.hands = None
         self.yolo_model = None
         self.last_boxes: list[tuple[tuple[int, int, int, int], str, float]] = []
-        self.phone_frames = 0
-        self.hand_face_frames = 0
-        self.person_frames = 0
+        self.phone_consensus = TemporalConsensus[bool](
+            window_size=self.thresholds.temporal_consensus_window,
+            min_votes=self.thresholds.object_presence_consensus_frames,
+        )
+        self.hand_face_consensus = TemporalConsensus[bool](
+            window_size=self.thresholds.temporal_consensus_window,
+            min_votes=self.thresholds.object_presence_consensus_frames,
+        )
+        self.person_consensus = TemporalConsensus[bool](
+            window_size=self.thresholds.temporal_consensus_window,
+            min_votes=self.thresholds.object_presence_consensus_frames,
+        )
 
         if HAS_MEDIAPIPE_SOLUTIONS:
             self.hands = MP_SOLUTIONS.hands.Hands(
@@ -170,10 +180,13 @@ class ObjectAnalyzer:
         return round(min(1.0, confidence), 4)
 
     def _stable_binary(self, candidate: bool, counter_name: str, required_frames: int) -> bool:
-        current_value = getattr(self, counter_name)
-        if candidate:
-            current_value += 1
-        else:
-            current_value = 0
-        setattr(self, counter_name, current_value)
-        return current_value >= max(1, required_frames)
+        mapping = {
+            "phone_frames": self.phone_consensus,
+            "hand_face_frames": self.hand_face_consensus,
+            "person_frames": self.person_consensus,
+        }
+        consensus = mapping[counter_name]
+        stable_value = bool(consensus.update(candidate))
+        if candidate and len(consensus.snapshot()) < max(1, required_frames):
+            return False
+        return stable_value
