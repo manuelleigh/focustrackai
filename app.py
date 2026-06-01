@@ -114,19 +114,30 @@ def _inject_styles() -> None:
             color: #1d4ed8 !important;
             background: #eff6ff;
         }
-        div.stButton > button:first-child {
+        div.stButton > button:first-child,
+        div.stDownloadButton > button:first-child {
             border-radius: 7px;
             height: 42px;
             font-weight: 700;
             border: 1px solid #cbd5e1;
+            background: #ffffff;
+            color: #0f172a;
+        }
+        div.stButton > button:first-child:hover,
+        div.stDownloadButton > button:first-child:hover {
+            background: #f1f5f9;
+            border-color: #94a3b8;
+            color: #0f172a;
         }
         div.stButton > button[kind="primary"] {
             background: #1d4ed8;
             border-color: #1d4ed8;
+            color: #ffffff;
         }
         div.stButton > button[kind="primary"]:hover {
             background: #1e3a8a;
             border-color: #1e3a8a;
+            color: #ffffff;
         }
         [data-testid="stMetric"] {
             background: #ffffff;
