@@ -18,7 +18,7 @@ class AttentionMetrics:
     fatigue_score: float = 0.0
     blink_count: int = 0
     backend: str = "mediapipe"
-
+#mas especifico
 
 @dataclass
 class PostureMetrics:
