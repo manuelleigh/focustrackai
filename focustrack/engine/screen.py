@@ -10,7 +10,7 @@ import psutil
 from focustrack.config import FocusTrackConfig
 from focustrack.models import ScreenMetrics
 
-
+#tomar captura
 class ScreenActivityMonitor:
     def __init__(self, config: FocusTrackConfig):
         self.config = config
