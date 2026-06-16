@@ -162,8 +162,8 @@ with info_col:
         """
         **Que detecta esta demo**
 
-        - Rostro, ojos, EAR y mirada con `OpenCV + MediaPipe`, con soporte opcional para `dlib`.
-        - Postura corporal usando `MediaPipe Pose`.
+        - Rostro, ojos, EAR y mirada con `MediaPipe` si la instalacion expone `solutions`; si no, usa fallback con `OpenCV`.
+        - Postura corporal con `MediaPipe Pose` o una estimacion visual de respaldo con `OpenCV`.
         - Celular y objetos si `YOLO` esta disponible; si no, usa heuristicas de manos y ausencia.
         - Aplicacion activa y clasificacion trabajo vs distraccion en el escritorio.
         """
@@ -198,6 +198,12 @@ else:
 
 history = storage.load_history(limit=400)
 _render_history(history, refresh_seconds)
+
+report_tab, ai_tab = st.tabs(["Reporte de sesion", "Clasificador IA"])
+with report_tab:
+    st.info("El modulo de reportes exportables estara disponible en esta pestaña.")
+with ai_tab:
+    st.info("El clasificador IA estara disponible en esta pestaña.")
 
 if st.session_state.monitor_running:
     time.sleep(refresh_seconds)
