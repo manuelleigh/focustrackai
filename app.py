@@ -246,8 +246,28 @@ def _frame_to_rgb(frame):
     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
 
-st.title("Sistema Inteligente de Monitoreo de Rendimiento y Distraccion Laboral")
-st.caption("Vision por computadora + reglas de IA para estimar atencion, fatiga, postura, distracciones y actividad en PC.")
+st.markdown(
+    """
+    <div class="ft-hero">
+        <div class="ft-kicker">Analitica laboral asistida por IA</div>
+        <h1>FocusTrack AI</h1>
+        <div class="ft-subtitle">
+            Sistema local para analizar atencion visual, postura, distracciones y actividad digital mediante
+            vision por computadora, reglas explicables y clasificacion supervisada.
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+st.markdown(
+    """
+    <div class="ft-notice">
+        Uso responsable: el sistema requiere consentimiento informado. Las capturas estan desactivadas por defecto;
+        el historial y los modelos se almacenan localmente.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 config, camera_index, refresh_seconds = _build_config()
 storage = StorageManager(config.data_dir)
