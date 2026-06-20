@@ -51,3 +51,21 @@ def build_timeline_events(history: pd.DataFrame, min_duration_seconds: float = 2
     if result.empty:
         return result
     return result[result["duracion_seg"] >= min_duration_seconds].reset_index(drop=True)
+
+
+def _is_positive(value: object, positive_values: set[object]) -> bool:
+    if isinstance(value, str):
+        return value in positive_values
+    return bool(value) in positive_values
+
+
+def _event_row(session_id: object, event_name: str, start, end, details: list[str]) -> dict[str, object]:
+    duration = max(0.0, (end - start).total_seconds())
+    return {
+        "session_id": session_id,
+        "evento": event_name,
+        "inicio": start,
+        "fin": end,
+        "duracion_seg": round(duration, 2),
+        "detalle": details[-1] if details else "",
+    }
