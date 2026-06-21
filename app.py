@@ -200,6 +200,24 @@ def _render_kpis(history: pd.DataFrame) -> None:
     metric_4.metric("App activa", str(last["active_app"]))
 
 
+def _render_sidebar_info(storage: StorageManager) -> None:
+    with st.sidebar.expander("Acerca del sistema", expanded=False):
+        st.caption("FocusTrack AI v1.1.0")
+        total_rows = storage.load_history()
+        st.metric("Registros acumulados", len(total_rows))
+        st.caption(f"Directorio de datos: {storage.data_dir}")
+        st.caption("Modo local · Sin conexion externa")
+
+
+def _render_footer() -> None:
+    st.markdown("---")
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.caption("FocusTrack AI · Analitica laboral asistida por IA")
+    with col_b:
+        st.caption("Desarrollado con Streamlit + OpenCV + MediaPipe")
+
+
 def _render_history(history: pd.DataFrame, refresh_seconds: float) -> None:
     if history.empty:
         return
@@ -271,6 +289,7 @@ st.markdown(
 
 config, camera_index, refresh_seconds = _build_config()
 storage = StorageManager(config.data_dir)
+_render_sidebar_info(storage)
 
 if "monitor" not in st.session_state:
     st.session_state.monitor = None
@@ -355,6 +374,8 @@ with report_tab:
     st.info("El modulo de reportes exportables estara disponible en esta pestaña.")
 with ai_tab:
     st.info("El clasificador IA estara disponible en esta pestaña.")
+
+_render_footer()
 
 if st.session_state.monitor_running:
     time.sleep(refresh_seconds)
