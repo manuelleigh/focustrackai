@@ -200,6 +200,14 @@ def _render_kpis(history: pd.DataFrame) -> None:
     metric_4.metric("App activa", str(last["active_app"]))
 
 
+def _reset_session() -> None:
+    if st.session_state.monitor is not None:
+        st.session_state.monitor.stop()
+    st.session_state.monitor = None
+    st.session_state.monitor_running = False
+    st.session_state.last_frame = None
+
+
 def _render_sidebar_info(storage: StorageManager) -> None:
     with st.sidebar.expander("Acerca del sistema", expanded=False):
         st.caption("FocusTrack AI v1.1.0")
@@ -207,6 +215,9 @@ def _render_sidebar_info(storage: StorageManager) -> None:
         st.metric("Registros acumulados", len(total_rows))
         st.caption(f"Directorio de datos: {storage.data_dir}")
         st.caption("Modo local · Sin conexion externa")
+    if st.sidebar.button("Reiniciar sesion", use_container_width=True):
+        _reset_session()
+        st.rerun()
 
 
 def _render_footer() -> None:
@@ -313,7 +324,7 @@ if start_clicked:
         st.session_state.monitor = monitor
         st.session_state.monitor_running = True
     except Exception as exc:
-        st.error(f"No fue posible iniciar el monitoreo: {exc}")
+        st.error(f"No fue posible iniciar el monitoreo. Verifica que la camara este conectada y no este en uso por otra aplicacion. Error: {exc}")
         st.session_state.monitor = None
         st.session_state.monitor_running = False
 
@@ -349,17 +360,21 @@ if st.session_state.monitor_running and st.session_state.monitor is not None:
         history = storage.load_history(limit=200)
 
         if snapshot.productivity_label == "Distraido":
-            alert_placeholder.error("Nivel de distraccion alto. Conviene revisar la causa o activar alertas.")
+            alert_placeholder.error(
+                "Alerta: nivel de distraccion elevado. "
+                "Verifica que la camara tenga buena iluminacion, "
+                "que tu rostro este centrado y que no haya objetos distractores visibles."
+            )
         elif snapshot.productivity_label == "Regular":
-            alert_placeholder.warning("Atencion irregular detectada. Revisa postura, mirada o actividad en pantalla.")
+            alert_placeholder.warning(
+                "Atencion irregular. "
+                "Revisa tu postura, la direccion de la mirada y la actividad en pantalla para mejorar el score."
+            )
         else:
-            alert_placeholder.success("Comportamiento dentro del rango productivo.")
+            alert_placeholder.success("Comportamiento productivo. Buen trabajo.")
     except Exception as exc:
-        alert_placeholder.error(f"Error de monitoreo: {exc}")
-        if st.session_state.monitor is not None:
-            st.session_state.monitor.stop()
-        st.session_state.monitor = None
-        st.session_state.monitor_running = False
+        alert_placeholder.error(f"Error inesperado durante el monitoreo. El sistema se detuvo automaticamente. Detalle: {exc}")
+        _reset_session()
 
 if st.session_state.last_frame is not None:
     frame_placeholder.image(_frame_to_rgb(st.session_state.last_frame), caption="Vista analizada", use_container_width=True)
