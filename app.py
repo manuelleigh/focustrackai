@@ -140,6 +140,25 @@ def _inject_styles() -> None:
             border-radius: 4px;
             padding: 0.1rem 0.25rem;
         }
+        [data-testid="stMetric"] {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        [data-testid="stMetric"]:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 32px rgba(15, 23, 42, 0.09);
+        }
+        .ft-hero {
+            transition: box-shadow 0.2s ease;
+        }
+        .ft-hero:hover {
+            box-shadow: 0 18px 44px rgba(15, 23, 42, 0.1);
+        }
+        div.stButton > button:first-child {
+            transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+        }
+        div.stButton > button:first-child:active {
+            transform: scale(0.98);
+        }
         </style>
         """,
         unsafe_allow_html=True,
