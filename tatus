@@ -1,0 +1,39 @@
+[33mcommit 737511bb3fbaf54b1a817a707f43a8a2087878de[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author:     Maria-FloresGarcia <mf3287429@gmail.com>
+AuthorDate: Mon Jun 29 15:40:04 2026 -0500
+Commit:     Maria-FloresGarcia <mf3287429@gmail.com>
+CommitDate: Mon Jun 29 15:40:04 2026 -0500
+
+    agregar funciones auxiliares para validar y registrar eventos
+
+[33mcommit 2340bf1bc844ddbe07d3c31ffe39341794786a42[m
+Author:     Maria-FloresGarcia <mf3287429@gmail.com>
+AuthorDate: Wed Jun 17 22:27:00 2026 -0500
+Commit:     Maria-FloresGarcia <mf3287429@gmail.com>
+CommitDate: Wed Jun 17 22:27:00 2026 -0500
+
+    implementar generación de eventos de la línea de tiempo
+
+[33mcommit ec9562ac22b3c7fe912c1972690aeb3770d05e4e[m
+Author:     Maria-FloresGarcia <mf3287429@gmail.com>
+AuthorDate: Sun Jun 14 21:14:00 2026 -0500
+Commit:     Maria-FloresGarcia <mf3287429@gmail.com>
+CommitDate: Sun Jun 14 21:14:00 2026 -0500
+
+    definir catálogo de eventos para la línea de tiempo
+
+[33mcommit fefd1ef9fd3e8c38936ffd07a1806e2da4859ed2[m[33m ([m[1;31morigin/manuelleigh/rediseño-visual[m[33m)[m
+Author:     Manuel Leigh <manuelleigh4@gmail.com>
+AuthorDate: Mon Jun 1 17:07:53 2026 -0500
+Commit:     Manuel Leigh <manuelleigh4@gmail.com>
+CommitDate: Mon Jun 1 17:07:53 2026 -0500
+
+    Fix: Reparar syntax error introducido por la consola de Windows al reemplazar los parametros de width
+
+[33mcommit 1408e58398f7ab620f793758590205d980db37b3[m
+Author:     Manuel Leigh <manuelleigh4@gmail.com>
+AuthorDate: Mon Jun 1 16:54:47 2026 -0500
+Commit:     Manuel Leigh <manuelleigh4@gmail.com>
+CommitDate: Mon Jun 1 16:54:47 2026 -0500
+
+    Fix: Reemplazar use_container_width con width=stretch para silenciar warnings de Streamlit
