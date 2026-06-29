@@ -11,6 +11,7 @@ import streamlit as st
 from focustrack.config import FocusTrackConfig, OptionalModels, ProductivityWeights
 from focustrack.engine.evaluation import build_labeled_dataset, evaluate_label_predictions
 from focustrack.monitor import FocusTrackMonitor
+from focustrack.features import load_features
 from focustrack.monitoring.storage import StorageManager
 from ui.style import inject_custom_css
 from ui.charts import render_score_chart, render_app_usage_chart
@@ -697,13 +698,18 @@ def main() -> None:
     _ensure_session_state()
     selected_session_id, sessions = _build_session_selector(storage)
 
-    # 4 Main Tabs
-    tab_dashboard, tab_analytics, tab_session, tab_config = st.tabs([
-        ":material/dashboard: Dashboard en Tiempo Real", 
-        ":material/analytics: Analítica e Historial", 
-        ":material/assignment: Gestión de Sesiones", 
-        ":material/settings: Configuración del Sistema"
-    ])
+    # Tabs fijos + tabs dinámicos de features v4
+    _v4_features = load_features()
+    _v4_labels = [getattr(m, "TITLE") for m in _v4_features]
+    _fixed_labels = [
+        ":material/dashboard: Dashboard en Tiempo Real",
+        ":material/analytics: Analítica e Historial",
+        ":material/assignment: Gestión de Sesiones",
+        ":material/settings: Configuración del Sistema",
+    ]
+    _all_tabs = st.tabs(_fixed_labels + _v4_labels)
+    tab_dashboard, tab_analytics, tab_session, tab_config = _all_tabs[:4]
+    _v4_tabs = _all_tabs[4:]
 
     active_session_id = _get_active_session_id() or selected_session_id
     rules_map = storage.get_alert_rules_map()
@@ -838,6 +844,14 @@ def main() -> None:
             
         st.divider()
         _render_audit_events(storage, active_session_id)
+
+    # --- TABS DINÁMICOS v4 ---
+    for _tab, _mod in zip(_v4_tabs, _v4_features):
+        with _tab:
+            try:
+                _mod.render(st, storage, config)
+            except Exception as _e:
+                st.error(f"Error en {getattr(_mod, 'TITLE', _mod.__name__)}: {_e}")
 
     if st.session_state.monitor_running:
         time.sleep(refresh_seconds)
