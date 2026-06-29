@@ -1,18 +1,157 @@
 from __future__ import annotations
 
 import cv2
-import mediapipe as mp
 
 from focustrack.config import DetectionThresholds
 from focustrack.models import PostureMetrics
+from focustrack.vision.mp_compat import HAS_MEDIAPIPE_SOLUTIONS, MP_SOLUTIONS
+from focustrack.vision.temporal import TemporalConsensus
+
 
 class PostureAnalyzer:
+    OPENCV_FACE_CENTER_X = 0.5
+    OPENCV_FACE_CENTER_Y = 0.35
+    OPENCV_FACE_RATIO_TARGET = 0.28
+    OPENCV_HORIZONTAL_WEIGHT = 140.0
+    OPENCV_VERTICAL_WEIGHT = 100.0
+    OPENCV_DISTANCE_WEIGHT = 180.0
+
     def __init__(self, thresholds: DetectionThresholds):
         self.thresholds = thresholds
-
-        self.pose = mp.solutions.pose.Pose(
-            static_image_mode=False,
-            model_complexity=1,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
+        self.pose = None
+        self.posture_state_consensus = TemporalConsensus[str](
+            window_size=self.thresholds.temporal_consensus_window,
+            min_votes=self.thresholds.posture_state_consensus_frames,
         )
+        self.face_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        )
+
+        if HAS_MEDIAPIPE_SOLUTIONS:
+            self.pose = MP_SOLUTIONS.pose.Pose(
+                static_image_mode=False,
+                model_complexity=1,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
+
+    def analyze(self, frame) -> tuple[PostureMetrics, dict[str, object]]:
+        if self.pose is None:
+            return self._analyze_with_opencv(frame)
+
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        result = self.pose.process(rgb_frame)
+        debug: dict[str, object] = {"pose_landmarks": None}
+
+        if not result.pose_landmarks:
+            return PostureMetrics(
+                posture_state="sin_datos",
+                posture_score=50.0,
+                confidence=0.2,
+            ), debug
+
+        debug["pose_landmarks"] = result.pose_landmarks
+        landmarks = result.pose_landmarks.landmark
+        nose = landmarks[MP_SOLUTIONS.pose.PoseLandmark.NOSE.value]
+        left_shoulder = landmarks[MP_SOLUTIONS.pose.PoseLandmark.LEFT_SHOULDER.value]
+        right_shoulder = landmarks[MP_SOLUTIONS.pose.PoseLandmark.RIGHT_SHOULDER.value]
+        left_hip = landmarks[MP_SOLUTIONS.pose.PoseLandmark.LEFT_HIP.value]
+        right_hip = landmarks[MP_SOLUTIONS.pose.PoseLandmark.RIGHT_HIP.value]
+
+        if not self._has_required_visibility(
+            [nose, left_shoulder, right_shoulder, left_hip, right_hip]
+        ):
+            return PostureMetrics(
+                posture_state=self._stable_posture("sin_datos"),
+                posture_score=50.0,
+                confidence=0.2,
+            ), debug
+
+        shoulder_tilt = abs(left_shoulder.y - right_shoulder.y)
+        torso_center_x = (left_shoulder.x + right_shoulder.x) / 2.0
+        hip_center_x = (left_hip.x + right_hip.x) / 2.0
+        torso_lean = abs(torso_center_x - hip_center_x)
+        head_offset = abs(nose.x - torso_center_x)
+
+        tilt_penalty = (shoulder_tilt / max(self.thresholds.shoulder_tilt_max, 1e-6)) * 25.0
+        lean_penalty = (torso_lean / max(self.thresholds.torso_lean_max, 1e-6)) * 35.0
+        head_penalty = (head_offset / max(self.thresholds.head_offset_max, 1e-6)) * 25.0
+        score = max(0.0, 100.0 - tilt_penalty - lean_penalty - head_penalty)
+
+        if score >= 75.0:
+            posture_state = "correcta"
+        elif score >= 50.0:
+            posture_state = "mejorable"
+        else:
+            posture_state = "encorvada"
+
+        metrics = PostureMetrics(
+            posture_state=self._stable_posture(posture_state),
+            posture_score=score,
+            shoulder_tilt=shoulder_tilt,
+            torso_lean=torso_lean,
+            head_offset=head_offset,
+            confidence=round(min(1.0, max(0.45, score / 100.0)), 4),
+        )
+        return metrics, debug
+
+    def close(self) -> None:
+        if self.pose is not None:
+            self.pose.close()
+
+    def _analyze_with_opencv(self, frame) -> tuple[PostureMetrics, dict[str, object]]:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = self.face_cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(80, 80),
+        )
+        debug: dict[str, object] = {"pose_landmarks": None, "posture_bbox": None}
+
+        if len(faces) == 0:
+            return PostureMetrics(posture_state="sin_datos", posture_score=50.0, confidence=0.1), debug
+
+        x, y, w, h = max(faces, key=lambda item: item[2] * item[3])
+        debug["posture_bbox"] = (int(x), int(y), int(x + w), int(y + h))
+
+        frame_height, frame_width = frame.shape[:2]
+        face_center_x = (x + (w / 2.0)) / max(frame_width, 1)
+        face_center_y = (y + (h / 2.0)) / max(frame_height, 1)
+        head_offset = abs(face_center_x - self.OPENCV_FACE_CENTER_X)
+        vertical_offset = abs(face_center_y - self.OPENCV_FACE_CENTER_Y)
+        face_ratio = h / max(frame_height, 1)
+        distance_penalty = (
+            abs(face_ratio - self.OPENCV_FACE_RATIO_TARGET)
+            * self.OPENCV_DISTANCE_WEIGHT
+        )
+        score = max(
+            0.0,
+            100.0
+            - (head_offset * self.OPENCV_HORIZONTAL_WEIGHT)
+            - (vertical_offset * self.OPENCV_VERTICAL_WEIGHT)
+            - distance_penalty,
+        )
+
+        if score >= 75.0:
+            posture_state = "correcta"
+        elif score >= 50.0:
+            posture_state = "mejorable"
+        else:
+            posture_state = "encorvada"
+
+        return PostureMetrics(
+            posture_state=self._stable_posture(posture_state),
+            posture_score=score,
+            shoulder_tilt=None,
+            torso_lean=vertical_offset,
+            head_offset=head_offset,
+            confidence=round(min(0.75, max(0.35, score / 100.0)), 4),
+        ), debug
+
+    def _has_required_visibility(self, landmarks: list[object]) -> bool:
+        min_visibility = self.thresholds.posture_visibility_min
+        return all(getattr(landmark, "visibility", 1.0) >= min_visibility for landmark in landmarks)
+
+    def _stable_posture(self, candidate_state: str) -> str:
+        return str(self.posture_state_consensus.update(candidate_state))

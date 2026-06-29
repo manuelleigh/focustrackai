@@ -3,11 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import cv2
-import mediapipe as mp
 import numpy as np
 
 from focustrack.config import DetectionThresholds
 from focustrack.models import AttentionMetrics
+from focustrack.vision.mp_compat import HAS_MEDIAPIPE_SOLUTIONS, MP_SOLUTIONS
+from focustrack.vision.temporal import TemporalConsensus
 
 try:
     import dlib
@@ -20,20 +21,39 @@ RIGHT_EYE = [362, 385, 387, 263, 373, 380]
 LEFT_IRIS = [468, 469, 470, 471, 472]
 RIGHT_IRIS = [473, 474, 475, 476, 477]
 FACE_BBOX_REFERENCE = [10, 152, 234, 454]
+FACE_CASCADE = cv2.CascadeClassifier(
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+)
 
 
 class AttentionAnalyzer:
-    def __init__(self, thresholds: DetectionThresholds, enable_dlib: bool = False, dlib_shape_predictor: Path | None = None):
+    def __init__(
+        self,
+        thresholds: DetectionThresholds,
+        enable_dlib: bool = False,
+        dlib_shape_predictor: Path | None = None,
+    ):
         self.thresholds = thresholds
-        self.face_mesh = mp.solutions.face_mesh.FaceMesh(
-            max_num_faces=1,
-            refine_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
-        )
+        self.use_mediapipe = HAS_MEDIAPIPE_SOLUTIONS
+        self.face_mesh = None
+        if self.use_mediapipe and MP_SOLUTIONS is not None:
+            self.face_mesh = MP_SOLUTIONS.face_mesh.FaceMesh(
+                max_num_faces=1,
+                refine_landmarks=True,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
         self.closed_eye_frames = 0
         self.blink_count = 0
         self.previous_eyes_closed = False
+        self.face_presence_consensus = TemporalConsensus[bool](
+            window_size=self.thresholds.temporal_consensus_window,
+            min_votes=self.thresholds.face_presence_consensus_frames,
+        )
+        self.attention_state_consensus = TemporalConsensus[str](
+            window_size=self.thresholds.temporal_consensus_window,
+            min_votes=self.thresholds.attention_state_consensus_frames,
+        )
         self.use_dlib = False
         self.dlib_detector = None
 
@@ -44,6 +64,9 @@ class AttentionAnalyzer:
 
     def analyze(self, frame: np.ndarray) -> tuple[AttentionMetrics, dict[str, object]]:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        if not self.use_mediapipe or self.face_mesh is None:
+            return self._analyze_without_mediapipe(frame)
+
         result = self.face_mesh.process(rgb_frame)
         backend = "mediapipe+dlib" if self.use_dlib else "mediapipe"
         debug: dict[str, object] = {
@@ -52,28 +75,52 @@ class AttentionAnalyzer:
         }
 
         if not result.multi_face_landmarks:
-            face_detected = self._dlib_face_detected(frame) if self.dlib_detector is not None else False
+            face_detected = self._stable_face_detected(
+                self._dlib_face_detected(frame) if self.dlib_detector is not None else False
+            )
             self.closed_eye_frames = 0
             self.previous_eyes_closed = False
             metrics = AttentionMetrics(
                 face_detected=face_detected,
                 eyes_detected=False,
                 eyes_closed=False,
-                attention_state="ausente",
+                attention_state=self._stable_attention("ausente"),
                 gaze_direction="desconocida",
                 fatigue_score=0.0,
                 blink_count=self.blink_count,
                 backend=backend,
             )
             return metrics, debug
-        
+
         face_landmarks = result.multi_face_landmarks[0]
         debug["face_landmarks"] = face_landmarks
-        face_bbox = self._face_bbox(face_landmarks.landmark, frame.shape[1], frame.shape[0])
+        face_bbox = self._face_bbox(
+            face_landmarks.landmark, frame.shape[1], frame.shape[0]
+        )
+        if not self._valid_face_bbox(face_bbox, frame.shape[1], frame.shape[0]):
+            self.closed_eye_frames = 0
+            self.previous_eyes_closed = False
+            metrics = AttentionMetrics(
+                face_detected=self._stable_face_detected(False),
+                eyes_detected=False,
+                eyes_closed=False,
+                attention_state=self._stable_attention("ausente"),
+                gaze_direction="desconocida",
+                fatigue_score=0.0,
+                blink_count=self.blink_count,
+                backend=backend,
+            )
+            return metrics, debug
+
+        stable_face_detected = self._stable_face_detected(True)
         debug["face_bbox"] = face_bbox
 
-        left_eye_points = self._pixels(face_landmarks.landmark, LEFT_EYE, frame.shape[1], frame.shape[0])
-        right_eye_points = self._pixels(face_landmarks.landmark, RIGHT_EYE, frame.shape[1], frame.shape[0])
+        left_eye_points = self._pixels(
+            face_landmarks.landmark, LEFT_EYE, frame.shape[1], frame.shape[0]
+        )
+        right_eye_points = self._pixels(
+            face_landmarks.landmark, RIGHT_EYE, frame.shape[1], frame.shape[0]
+        )
         left_ear = self._eye_aspect_ratio(left_eye_points)
         right_ear = self._eye_aspect_ratio(right_eye_points)
         avg_ear = float(np.mean([left_ear, right_ear]))
@@ -89,20 +136,22 @@ class AttentionAnalyzer:
 
         gaze_ratio = self._gaze_ratio(face_landmarks.landmark)
         gaze_direction = self._gaze_direction(gaze_ratio)
-        fatigue_score = min(1.0, self.closed_eye_frames / max(1, self.thresholds.fatigue_frame_window))
+        fatigue_score = min(
+            1.0, self.closed_eye_frames / max(1, self.thresholds.fatigue_frame_window)
+        )
 
         if eyes_closed and fatigue_score >= 0.75:
-            attention_state = "somnoliento"
+            attention_candidate = "somnoliento"
         elif gaze_direction == "centro":
-            attention_state = "atento"
+            attention_candidate = "atento"
         else:
-            attention_state = "desviado"
+            attention_candidate = "desviado"
 
         metrics = AttentionMetrics(
-            face_detected=True,
+            face_detected=stable_face_detected,
             eyes_detected=True,
             eyes_closed=eyes_closed,
-            attention_state=attention_state,
+            attention_state=self._stable_attention(attention_candidate),
             gaze_direction=gaze_direction,
             left_ear=left_ear,
             right_ear=right_ear,
@@ -114,8 +163,68 @@ class AttentionAnalyzer:
         )
         return metrics, debug
 
+    def _analyze_without_mediapipe(
+        self, frame: np.ndarray
+    ) -> tuple[AttentionMetrics, dict[str, object]]:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = FACE_CASCADE.detectMultiScale(
+            gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60)
+        )
+        debug: dict[str, object] = {
+            "face_landmarks": None,
+            "face_bbox": None,
+        }
+
+        if len(faces) == 0:
+            self.closed_eye_frames = 0
+            self.previous_eyes_closed = False
+            return (
+                AttentionMetrics(
+                    face_detected=self._stable_face_detected(False),
+                    eyes_detected=False,
+                    eyes_closed=False,
+                    attention_state=self._stable_attention("ausente"),
+                    gaze_direction="desconocida",
+                    fatigue_score=0.0,
+                    blink_count=self.blink_count,
+                    backend="fallback-haar",
+                ),
+                debug,
+            )
+
+        x, y, w, h = max(faces, key=lambda item: item[2] * item[3])
+        debug["face_bbox"] = (x, y, x + w, y + h)
+        if not self._valid_face_bbox(debug["face_bbox"], frame.shape[1], frame.shape[0]):
+            return (
+                AttentionMetrics(
+                    face_detected=self._stable_face_detected(False),
+                    eyes_detected=False,
+                    eyes_closed=False,
+                    attention_state=self._stable_attention("ausente"),
+                    gaze_direction="desconocida",
+                    fatigue_score=0.0,
+                    blink_count=self.blink_count,
+                    backend="fallback-haar",
+                ),
+                debug,
+            )
+        return (
+            AttentionMetrics(
+                face_detected=self._stable_face_detected(True),
+                eyes_detected=False,
+                eyes_closed=False,
+                attention_state=self._stable_attention("atento"),
+                gaze_direction="desconocida",
+                fatigue_score=0.0,
+                blink_count=self.blink_count,
+                backend="fallback-haar",
+            ),
+            debug,
+        )
+
     def close(self) -> None:
-        self.face_mesh.close()
+        if self.face_mesh is not None:
+            self.face_mesh.close()
 
     def _dlib_face_detected(self, frame: np.ndarray) -> bool:
         if self.dlib_detector is None:
@@ -125,7 +234,36 @@ class AttentionAnalyzer:
         faces = self.dlib_detector(gray, 0)
         return bool(faces)
 
-    def _face_bbox(self, landmarks, frame_width: int, frame_height: int) -> tuple[int, int, int, int]:
+    def _stable_face_detected(self, candidate_detected: bool) -> bool:
+        stable_value = bool(self.face_presence_consensus.update(candidate_detected))
+        if (
+            candidate_detected
+            and len(self.face_presence_consensus.snapshot())
+            < self.thresholds.face_presence_consensus_frames
+        ):
+            return False
+        return stable_value
+
+    def _stable_attention(self, candidate_state: str) -> str:
+        return str(self.attention_state_consensus.update(candidate_state))
+
+    def _valid_face_bbox(
+        self,
+        face_bbox: tuple[int, int, int, int],
+        frame_width: int,
+        frame_height: int,
+    ) -> bool:
+        x1, y1, x2, y2 = face_bbox
+        width_ratio = max(0, x2 - x1) / max(frame_width, 1)
+        height_ratio = max(0, y2 - y1) / max(frame_height, 1)
+        return (
+            width_ratio >= self.thresholds.face_min_width_ratio
+            and height_ratio >= self.thresholds.face_min_height_ratio
+        )
+
+    def _face_bbox(
+        self, landmarks, frame_width: int, frame_height: int
+    ) -> tuple[int, int, int, int]:
         xs = []
         ys = []
         for index in FACE_BBOX_REFERENCE:
@@ -139,7 +277,9 @@ class AttentionAnalyzer:
         y2 = min(frame_height - 1, max(ys))
         return x1, y1, x2, y2
 
-    def _pixels(self, landmarks, indexes: list[int], frame_width: int, frame_height: int) -> np.ndarray:
+    def _pixels(
+        self, landmarks, indexes: list[int], frame_width: int, frame_height: int
+    ) -> np.ndarray:
         return np.array(
             [
                 (
@@ -158,12 +298,25 @@ class AttentionAnalyzer:
         return float((vertical_1 + vertical_2) / (2.0 * horizontal + 1e-6))
 
     def _gaze_ratio(self, landmarks) -> float:
-        left_ratio = self._single_eye_gaze_ratio(landmarks, LEFT_IRIS, LEFT_EYE[0], LEFT_EYE[3])
-        right_ratio = self._single_eye_gaze_ratio(landmarks, RIGHT_IRIS, RIGHT_EYE[0], RIGHT_EYE[3])
+        left_ratio = self._single_eye_gaze_ratio(
+            landmarks, LEFT_IRIS, LEFT_EYE[0], LEFT_EYE[3]
+        )
+        right_ratio = self._single_eye_gaze_ratio(
+            landmarks, RIGHT_IRIS, RIGHT_EYE[0], RIGHT_EYE[3]
+        )
         return float(np.mean([left_ratio, right_ratio]))
 
-    def _single_eye_gaze_ratio(self, landmarks, iris_indices: list[int], eye_left_index: int, eye_right_index: int) -> float:
-        iris_points = np.array([[landmarks[index].x, landmarks[index].y] for index in iris_indices], dtype=np.float32)
+    def _single_eye_gaze_ratio(
+        self,
+        landmarks,
+        iris_indices: list[int],
+        eye_left_index: int,
+        eye_right_index: int,
+    ) -> float:
+        iris_points = np.array(
+            [[landmarks[index].x, landmarks[index].y] for index in iris_indices],
+            dtype=np.float32,
+        )
         iris_center = iris_points.mean(axis=0)
         eye_left = landmarks[eye_left_index]
         eye_right = landmarks[eye_right_index]
@@ -172,7 +325,11 @@ class AttentionAnalyzer:
         return float((iris_center[0] - min_x) / (max_x - min_x + 1e-6))
 
     def _gaze_direction(self, gaze_ratio: float) -> str:
-        if self.thresholds.gaze_center_min <= gaze_ratio <= self.thresholds.gaze_center_max:
+        if (
+            self.thresholds.gaze_center_min
+            <= gaze_ratio
+            <= self.thresholds.gaze_center_max
+        ):
             return "centro"
         if gaze_ratio < self.thresholds.gaze_center_min:
             return "izquierda"
