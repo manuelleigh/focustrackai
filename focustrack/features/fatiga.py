@@ -62,3 +62,38 @@ def compute_fatigue(history: pd.DataFrame) -> dict:
 _NIVEL_COLOR = {"baja": "normal", "media": "inverse", "alta": "off", "sin_datos": "off"}
 _NIVEL_ICON = {"baja": ":material/check_circle:", "media": ":material/warning:", "alta": ":material/dangerous:", "sin_datos": ":material/help:"}
 
+
+def render(st, storage, config) -> None:
+    st.header(":material/bedtime: Fatiga Visual")
+    st.caption("Análisis de fatiga ocular acumulada durante la sesión activa.")
+
+    from focustrack.monitoring.storage import StorageManager
+    history = storage.load_history(limit=400)
+
+    result = compute_fatigue(history)
+    nivel = result["nivel"]
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Nivel de fatiga", nivel.upper())
+    col2.metric("Parpadeos / min", result["tasa_parpadeo"])
+    col3.metric("% ojos cerrados", f"{result['pct_ojos_cerrados']} %")
+    col4.metric("EAR promedio", result["ear_promedio"] if result["ear_promedio"] is not None else "—")
+
+    st.divider()
+
+    if nivel == "alta":
+        st.error(f"{_NIVEL_ICON[nivel]} Fatiga **alta** detectada. Considera tomar una pausa y descansar la vista.")
+    elif nivel == "media":
+        st.warning(f"{_NIVEL_ICON[nivel]} Fatiga **media**. Recuerda parpadear conscientemente y mirar a distancia.")
+    elif nivel == "baja":
+        st.success(f"{_NIVEL_ICON[nivel]} Fatiga **baja**. Tus ojos están en buen estado.")
+    else:
+        st.info("Sin datos suficientes. Inicia el monitoreo para ver tu nivel de fatiga.")
+
+    if not history.empty and "fatigue_score" in history.columns:
+        st.subheader("Evolución del score de fatiga")
+        fat_series = history[["timestamp", "fatigue_score"]].copy()
+        fat_series["fatigue_score"] = pd.to_numeric(fat_series["fatigue_score"], errors="coerce")
+        fat_series = fat_series.dropna(subset=["fatigue_score"])
+        if not fat_series.empty:
+            st.line_chart(fat_series.set_index("timestamp")["fatigue_score"])
