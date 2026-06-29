@@ -19,8 +19,12 @@ class ScoringTests(unittest.TestCase):
             attention=AttentionMetrics(
                 attention_state="atento", face_detected=True, eyes_detected=True
             ),
-            posture=PostureMetrics(posture_state="correcta", posture_score=90.0),
-            objects=ObjectMetrics(person_present=True),
+            posture=PostureMetrics(
+                posture_state="correcta",
+                posture_score=90.0,
+                confidence=0.95,
+            ),
+            objects=ObjectMetrics(person_present=True, confidence=0.75),
             screen=ScreenMetrics(
                 active_app="Code", category="trabajo", productivity_score=100.0
             ),
@@ -35,9 +39,16 @@ class ScoringTests(unittest.TestCase):
             attention=AttentionMetrics(
                 attention_state="somnoliento", fatigue_score=1.0
             ),
-            posture=PostureMetrics(posture_state="encorvada", posture_score=20.0),
+            posture=PostureMetrics(
+                posture_state="encorvada",
+                posture_score=20.0,
+                confidence=0.3,
+            ),
             objects=ObjectMetrics(
-                person_present=True, phone_detected=True, hand_on_face=True
+                person_present=True,
+                phone_detected=True,
+                hand_on_face=True,
+                confidence=0.9,
             ),
             screen=ScreenMetrics(
                 active_app="YouTube", category="distraccion", productivity_score=15.0

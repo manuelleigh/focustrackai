@@ -1,41 +1,76 @@
 # FocusTrack AI
 
-Prototipo de sistema inteligente para monitorear atencion, distraccion y productividad laboral usando vision por computadora, reglas de IA y un dashboard en Streamlit.
+Sistema de monitoreo de atencion, distraccion y productividad laboral usando vision por computadora, reglas persistidas y un dashboard en Streamlit.
 
-## Modulos implementados
+## Capacidades actuales
 
-1. Deteccion de rostro y ojos
-   - `OpenCV + MediaPipe Face Mesh` para detectar rostro, ojos y landmarks faciales.
-   - Calculo de `EAR (Eye Aspect Ratio)` para estimar fatiga o somnolencia.
-   - Soporte opcional para `dlib` como respaldo de deteccion facial.
+1. Vision y fallbacks
+   - `MediaPipe Face Mesh` para atencion visual y `MediaPipe Pose` para postura cuando la dependencia esta disponible.
+   - Fallback con `OpenCV Haar Cascades` para rostro y postura cuando `MediaPipe` no esta presente.
+   - Soporte opcional para `dlib` y `YOLO`.
 
-2. Analisis de atencion
-   - Estimacion basica de mirada con la posicion relativa del iris.
-   - Estados disponibles: `atento`, `desviado`, `somnoliento`, `ausente`.
+2. Monitoreo y scoring
+   - Estados de atencion: `atento`, `desviado`, `somnoliento`, `ausente`.
+   - Estados de postura: `correcta`, `mejorable`, `encorvada`, `sin_datos`.
+   - Score de 0 a 100 con etiquetas `Productivo`, `Regular`, `Distraido`.
 
-3. Deteccion de distracciones
-   - Integracion opcional con `YOLO` para detectar `cell phone` y `person`.
-   - Deteccion heuristica de mano en el rostro con `MediaPipe Hands`.
-   - Identificacion de ausencia de usuario.
+3. Persistencia operativa
+   - Escritura dual en `SQLite + CSV`.
+   - Historial consultado desde SQLite con `payload_json` como respaldo diagnostico.
+   - Auditoria de eventos del monitor.
+   - Notas de sesion, etiquetas humanas y reglas de alerta persistidas.
 
-4. Postura corporal
-   - `MediaPipe Pose` para evaluar inclinacion de hombros, torso y cabeza.
-   - Clasificacion de postura: `correcta`, `mejorable`, `encorvada`.
+4. Dashboard
+   - Frame anotado en tiempo real.
+   - KPIs, graficas de score e historial por aplicacion.
+   - Paneles para salud del storage, auditoria, reglas, notas y etiquetas humanas.
+   - Exportacion de historial filtrado por sesion a CSV de analisis.
+   - Exportacion de auditoria filtrada por sesion a CSV para revision operativa.
 
-5. Analisis de pantalla
-   - Lectura de aplicacion/ventana activa.
-   - Clasificacion simple entre `trabajo`, `neutral` y `distraccion`.
-   - Captura opcional de pantalla para auditoria visual.
+5. Evaluacion experimental
+   - Cruce entre `productivity_label` predicho y `human_label` registrado manualmente.
+   - Accuracy, macro F1 y matriz de confusion por sesion.
+   - Dataset evaluable construido desde historial persistido y rangos de etiquetas humanas.
 
-6. Sistema de puntuacion
-   - Score de 0 a 100 basado en atencion, objetos, postura y actividad en PC.
-   - Etiquetas: `Productivo`, `Regular`, `Distraido`.
+## Instalacion
 
-7. Dashboard
-   - Visualizacion en tiempo real del frame analizado.
-   - KPIs, graficas de score, tiempo estimado por aplicacion e historial de eventos.
+```bash
+python -m venv .venv
+.venv\\Scripts\\activate
+pip install -r requirements.txt
+```
 
-## Estructura
+Dependencias opcionales:
+
+```bash
+pip install -r requirements-optional.txt
+```
+
+Notas:
+
+- `mediapipe` sigue siendo la mejor ruta para analisis fino, pero la app ahora puede cargar con fallback heuristico si falta.
+- `dlib` puede requerir Visual Studio Build Tools en Windows.
+- `YOLO` usa por defecto `yolov8n.pt`; si no esta disponible, el sistema sigue funcionando sin ese backend.
+
+## Ejecucion
+
+```bash
+streamlit run app.py
+```
+
+## Pruebas
+
+```bash
+C:\laragon\bin\python\python-3.10\python.exe -m unittest discover -s tests -v
+```
+
+## Datos generados
+
+- Base SQLite: `data/focustrack.db`
+- Historial CSV de respaldo: `data/productivity_history.csv`
+- Capturas de pantalla opcionales: `data/screenshots/`
+
+## Estructura relevante
 
 ```text
 focustrack/
@@ -48,46 +83,12 @@ focustrack/
     storage.py
   vision/
     attention.py
+    mp_compat.py
     posture.py
     objects.py
 app.py
-tests/test_scoring.py
+tests/
+  test_imports.py
+  test_scoring.py
+  test_storage.py
 ```
-
-## Instalacion
-
-```bash
-python -m venv .venv
-.venv\\Scripts\\activate
-pip install -r requirements.txt
-```
-
-Opcional para funcionalidades avanzadas:
-
-```bash
-pip install -r requirements-optional.txt
-```
-
-Notas:
-
-- `dlib` puede requerir Visual Studio Build Tools en Windows.
-- `YOLO` usa por defecto `yolov8n.pt`; si no esta disponible, el sistema sigue funcionando con heuristicas.
-
-## Ejecucion
-
-```bash
-streamlit run app.py
-```
-
-## Datos generados
-
-- Historial CSV: `data/productivity_history.csv`
-- Capturas de pantalla opcionales: `data/screenshots/`
-
-## Ideas para seguir mejorando
-
-- Entrenar un clasificador supervisado con historicos reales.
-- Agregar alertas sonoras y notificaciones.
-- Soportar multiples empleados con identificacion por usuario o camara.
-- Crear reportes diarios y semanales por persona.
-- Incorporar OCR o clasificacion visual del contenido de pantalla.
