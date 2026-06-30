@@ -20,7 +20,7 @@ LEFT_EYE = [33, 160, 158, 133, 153, 144]
 RIGHT_EYE = [362, 385, 387, 263, 373, 380]
 LEFT_IRIS = [468, 469, 470, 471, 472]
 RIGHT_IRIS = [473, 474, 475, 476, 477]
-MOUTH = [61, 291, 13, 14]
+MOUTH = [61, 291, 13, 14] # [esquina_izq, esquina_der, labio_sup, labio_inf]
 FACE_BBOX_REFERENCE = [10, 152, 234, 454]
 FACE_CASCADE = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -125,6 +125,12 @@ class AttentionAnalyzer:
         left_ear = self._eye_aspect_ratio(left_eye_points)
         right_ear = self._eye_aspect_ratio(right_eye_points)
         avg_ear = float(np.mean([left_ear, right_ear]))
+
+        mouth_points = self._pixels(
+            face_landmarks.landmark, MOUTH, frame.shape[1], frame.shape[0]
+        )
+        mouth_aspect_ratio = self._mouth_aspect_ratio(mouth_points)
+        yawning = mouth_aspect_ratio > self.thresholds.mar_open
 
         eyes_closed = avg_ear < self.thresholds.ear_closed
         if eyes_closed:
