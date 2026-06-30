@@ -167,6 +167,8 @@ class AttentionAnalyzer:
             fatigue_score=fatigue_score,
             blink_count=self.blink_count,
             backend=backend,
+            mouth_aspect_ratio=mouth_aspect_ratio,   
+            yawning=yawning,
         )
         return metrics, debug
 
