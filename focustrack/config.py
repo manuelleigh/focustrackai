@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -31,6 +30,7 @@ class DetectionThresholds:
     head_offset_max: float = 0.14
     posture_visibility_min: float = 0.55
     posture_state_consensus_frames: int = 2
+    mar_open: float = 0.60
     hand_face_distance: float = 0.12
     hand_face_min_points: int = 3
     object_presence_consensus_frames: int = 2

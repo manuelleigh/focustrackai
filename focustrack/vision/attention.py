@@ -16,6 +16,10 @@ except ImportError:  # pragma: no cover - optional dependency
     dlib = None
 
 
+# Landmarks de boca: superior, inferior, comisura izq, comisura der
+MOUTH_VERTICAL = [13, 14]
+MOUTH_HORIZONTAL = [78, 308]
+
 LEFT_EYE = [33, 160, 158, 133, 153, 144]
 RIGHT_EYE = [362, 385, 387, 263, 373, 380]
 LEFT_IRIS = [468, 469, 470, 471, 472]
@@ -76,7 +80,9 @@ class AttentionAnalyzer:
 
         if not result.multi_face_landmarks:
             face_detected = self._stable_face_detected(
-                self._dlib_face_detected(frame) if self.dlib_detector is not None else False
+                self._dlib_face_detected(frame)
+                if self.dlib_detector is not None
+                else False
             )
             self.closed_eye_frames = 0
             self.previous_eyes_closed = False
@@ -140,6 +146,11 @@ class AttentionAnalyzer:
             1.0, self.closed_eye_frames / max(1, self.thresholds.fatigue_frame_window)
         )
 
+        mar = self._mouth_aspect_ratio(
+            face_landmarks.landmark, frame.shape[1], frame.shape[0]
+        )
+        yawning = mar > self.thresholds.mar_open
+
         if eyes_closed and fatigue_score >= 0.75:
             attention_candidate = "somnoliento"
         elif gaze_direction == "centro":
@@ -160,6 +171,8 @@ class AttentionAnalyzer:
             fatigue_score=fatigue_score,
             blink_count=self.blink_count,
             backend=backend,
+            mouth_aspect_ratio=mar,
+            yawning=yawning,
         )
         return metrics, debug
 
@@ -194,7 +207,9 @@ class AttentionAnalyzer:
 
         x, y, w, h = max(faces, key=lambda item: item[2] * item[3])
         debug["face_bbox"] = (x, y, x + w, y + h)
-        if not self._valid_face_bbox(debug["face_bbox"], frame.shape[1], frame.shape[0]):
+        if not self._valid_face_bbox(
+            debug["face_bbox"], frame.shape[1], frame.shape[0]
+        ):
             return (
                 AttentionMetrics(
                     face_detected=self._stable_face_detected(False),
@@ -323,6 +338,18 @@ class AttentionAnalyzer:
         min_x = min(eye_left.x, eye_right.x)
         max_x = max(eye_left.x, eye_right.x)
         return float((iris_center[0] - min_x) / (max_x - min_x + 1e-6))
+
+    def _mouth_aspect_ratio(
+        self, landmarks, frame_width: int, frame_height: int
+    ) -> float:
+        """Relación de aspecto de la boca (MAR): apertura vertical / apertura horizontal."""
+        top = landmarks[MOUTH_VERTICAL[0]]
+        bot = landmarks[MOUTH_VERTICAL[1]]
+        left = landmarks[MOUTH_HORIZONTAL[0]]
+        right = landmarks[MOUTH_HORIZONTAL[1]]
+        vertical = abs(top.y - bot.y) * frame_height
+        horizontal = abs(left.x - right.x) * frame_width
+        return float(vertical / (horizontal + 1e-6))
 
     def _gaze_direction(self, gaze_ratio: float) -> str:
         if (
