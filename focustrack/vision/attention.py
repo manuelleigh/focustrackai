@@ -305,6 +305,11 @@ class AttentionAnalyzer:
         vertical_2 = np.linalg.norm(points[2] - points[4])
         horizontal = np.linalg.norm(points[0] - points[3])
         return float((vertical_1 + vertical_2) / (2.0 * horizontal + 1e-6))
+    
+    def _mouth_aspect_ratio(self, points: np.ndarray) -> float:
+        vertical = np.linalg.norm(points[2] - points[3])
+        horizontal = np.linalg.norm(points[0] - points[1])
+        return float(vertical / (horizontal + 1e-6))
 
     def _gaze_ratio(self, landmarks) -> float:
         left_ratio = self._single_eye_gaze_ratio(
