@@ -18,6 +18,7 @@ class ProductivityWeights:
 @dataclass
 class DetectionThresholds:
     ear_closed: float = 0.20
+    mar_open: float = 0.6
     gaze_center_min: float = 0.35
     gaze_center_max: float = 0.65
     fatigue_frame_window: int = 8
