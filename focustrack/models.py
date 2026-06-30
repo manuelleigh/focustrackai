@@ -18,6 +18,8 @@ class AttentionMetrics:
     fatigue_score: float = 0.0
     blink_count: int = 0
     backend: str = "mediapipe"
+    mouth_aspect_ratio: float | None = None
+    yawning: bool = False 
 
 
 @dataclass
