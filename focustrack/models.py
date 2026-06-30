@@ -18,6 +18,8 @@ class AttentionMetrics:
     fatigue_score: float = 0.0
     blink_count: int = 0
     backend: str = "mediapipe"
+    mouth_aspect_ratio: float | None = None
+    yawning: bool = False
 
 
 @dataclass
@@ -84,6 +86,12 @@ class ProductivitySnapshot:
             ),
             "fatigue_score": round(self.attention.fatigue_score, 4),
             "blink_count": self.attention.blink_count,
+            "mouth_aspect_ratio": (
+                round(self.attention.mouth_aspect_ratio, 4)
+                if self.attention.mouth_aspect_ratio is not None
+                else None
+            ),
+            "yawning": self.attention.yawning,
             "face_detected": self.attention.face_detected,
             "eyes_closed": self.attention.eyes_closed,
             "posture_state": self.posture.posture_state,
